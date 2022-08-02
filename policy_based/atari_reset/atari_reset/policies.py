@@ -61,8 +61,7 @@ def conv(x, scope, noutchannels, filtsize, stride, pad='VALID', init_scale=1.0):
         nin = x.get_shape()[3].value
         w = tf.get_variable("w", [filtsize, filtsize, nin, noutchannels], initializer=ortho_init(init_scale))
         b = tf.get_variable("b", [noutchannels], initializer=tf.constant_initializer(0.0))
-        z = tf.nn.conv2d(x, w, strides=[1, stride, stride, 1], padding=pad)+b
-        return z
+        return tf.nn.conv2d(x, w, strides=[1, stride, stride, 1], padding=pad)+b
 
 
 class GRUCell(rnn_cell.RNNCell):
@@ -71,10 +70,25 @@ class GRUCell(rnn_cell.RNNCell):
         rnn_cell.RNNCell.__init__(self)
         self._num_units = num_units
         self.rec_gate_init = rec_gate_init
-        self.w1 = tf.get_variable(name + "w1", [nin+num_units, 2*num_units], initializer=normc_init(1.))
-        self.b1 = tf.get_variable(name + "b1", [2*num_units], initializer=tf.constant_initializer(rec_gate_init))
-        self.w2 = tf.get_variable(name + "w2", [nin+num_units, num_units], initializer=normc_init(1.))
-        self.b2 = tf.get_variable(name + "b2", [num_units], initializer=tf.constant_initializer(0.))
+        self.w1 = tf.get_variable(
+            f"{name}w1",
+            [nin + num_units, 2 * num_units],
+            initializer=normc_init(1.0),
+        )
+
+        self.b1 = tf.get_variable(
+            f"{name}b1",
+            [2 * num_units],
+            initializer=tf.constant_initializer(rec_gate_init),
+        )
+
+        self.w2 = tf.get_variable(
+            f"{name}w2", [nin + num_units, num_units], initializer=normc_init(1.0)
+        )
+
+        self.b2 = tf.get_variable(
+            f"{name}b2", [num_units], initializer=tf.constant_initializer(0.0)
+        )
 
     @property
     def state_size(self):

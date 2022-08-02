@@ -36,9 +36,11 @@ class PitfallPosLevel:
         return hash(self.tuple)
 
     def __eq__(self, other):
-        if not isinstance(other, PitfallPosLevel):
-            return False
-        return self.tuple == other.tuple
+        return (
+            self.tuple == other.tuple
+            if isinstance(other, PitfallPosLevel)
+            else False
+        )
 
     def __getstate__(self):
         return self.tuple
@@ -55,9 +57,7 @@ MAX_PIX_VALUE = None
 def clip(a, min_v, max_v):
     if a < min_v:
         return min_v
-    if a > max_v:
-        return max_v
-    return a
+    return max_v if a > max_v else a
 
 
 class MyPitfall(MyWrapper):
@@ -142,7 +142,7 @@ class MyPitfall(MyWrapper):
 
     def pos_from_unprocessed_state(self, face_pixels):
         face_pixels = [(y, x * self.x_repeat) for y, x in face_pixels]
-        if len(face_pixels) == 0:
+        if not face_pixels:
             assert self.pos is not None, 'No face pixel and no previous pos'
             return self.pos  # Simply re-use the same position
         y, x = np.mean(face_pixels, axis=0)
@@ -184,8 +184,7 @@ class MyPitfall(MyWrapper):
         return copy.copy(self.state)
 
     def get_face_pixels(self, unprocessed_state):
-        result = set(zip(*np.where(unprocessed_state[MyPitfall.gui_size:, :, 0] == 228)))
-        return result
+        return set(zip(*np.where(unprocessed_state[MyPitfall.gui_size:, :, 0] == 228)))
 
     def step(self, action) -> Tuple[np.ndarray, float, bool, dict]:
         unprocessed_state, reward, done, lol = self.env.step(action)

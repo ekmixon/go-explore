@@ -38,9 +38,7 @@ class AtariPosLevel:
         return hash(self.tuple)
 
     def __eq__(self, other):
-        if not isinstance(other, AtariPosLevel):
-            return False
-        return self.tuple == other.tuple
+        return self.tuple == other.tuple if isinstance(other, AtariPosLevel) else False
 
     def __getstate__(self):
         return self.tuple
@@ -56,9 +54,7 @@ class AtariPosLevel:
 def clip(a, min_v, max_v):
     if a < min_v:
         return min_v
-    if a > max_v:
-        return max_v
-    return a
+    return max_v if a > max_v else a
 
 
 class MyAtari:

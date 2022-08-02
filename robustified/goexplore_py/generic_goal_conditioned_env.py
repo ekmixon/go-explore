@@ -80,9 +80,11 @@ class DomainConditionedPosLevel:
         return hash(self.tuple)
 
     def __eq__(self, other):
-        if not isinstance(other, DomainConditionedPosLevel):
-            return False
-        return self.tuple == other.tuple
+        return (
+            self.tuple == other.tuple
+            if isinstance(other, DomainConditionedPosLevel)
+            else False
+        )
 
     def __getstate__(self):
         return self.tuple

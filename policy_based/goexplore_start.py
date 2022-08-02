@@ -89,8 +89,7 @@ class GetWeight:
         cell = self.expl.archive.archive[x]
         archive = self.expl.archive.archive
         weight = self.expl.archive.cell_selector.get_weight(cell_key, cell, archive)
-        prob = weight / self.total
-        return prob
+        return weight / self.total
 
 
 def render_pictures(log_par: LogParameters, expl, filename, prev_checkpoint, screenshots, sil_trajectories):
@@ -103,7 +102,7 @@ def render_pictures(log_par: LogParameters, expl, filename, prev_checkpoint, scr
     y_res = expl.trajectory_gatherer.env.recursive_getattr('y_res')[0]
 
     def render(local_name, get_val, log_scale=False):
-        local_file_name = filename + '_' + local_name + '.png'
+        local_file_name = f'{filename}_{local_name}.png'
         env_render(all_cells, x_res, y_res, filename=local_file_name, get_val=get_val, log_scale=log_scale)
 
     names = set('')
@@ -144,10 +143,13 @@ def render_pictures(log_par: LogParameters, expl, filename, prev_checkpoint, scr
     name = 'ret_prob'
     if log_par.should_render(name):
         def local_get_weight(x):
-            if x in expl.archive.cells_reached_dict:
-                if len(expl.archive.cells_reached_dict[x]) > 0:
-                    return sum(expl.archive.cells_reached_dict[x]) / len(expl.archive.cells_reached_dict[x])
+            if (
+                x in expl.archive.cells_reached_dict
+                and len(expl.archive.cells_reached_dict[x]) > 0
+            ):
+                return sum(expl.archive.cells_reached_dict[x]) / len(expl.archive.cells_reached_dict[x])
             return 0
+
         render(name, local_get_weight)
         names.add(name)
 
@@ -158,30 +160,27 @@ def render_pictures(log_par: LogParameters, expl, filename, prev_checkpoint, scr
             if traj_id in expl.archive.cell_trajectory_manager.cell_trajectories:
                 trajectory = expl.archive.cell_trajectory_manager.get_trajectory(traj_id, -1,
                                                                                  expl.archive.cell_id_to_key_dict)
-                cells = dict()
-                cells_count = dict()
+                cells = {}
+                cells_count = {}
                 for j, traj_elem in enumerate(trajectory):
                     cell_key, _nb_actions = traj_elem
                     if cell_key not in cells_count:
                         cells_count[cell_key] = 0
                     cells_count[cell_key] += 1
-                    if len(trajectory) > 1:
-                        val = j / (len(trajectory)-1)
-                    else:
-                        val = 0
+                    val = j / (len(trajectory)-1) if len(trajectory) > 1 else 0
                     if cell_key not in cells:
                         cells[cell_key] = val
                     else:
                         cells[cell_key] = (cells[cell_key] + val) / cells_count[cell_key]
-                render(str(i) + '_' + name, lambda x: cells.get(x, -1))
+                render(f'{str(i)}_{name}', lambda x: cells.get(x, -1))
         names.add(name)
 
     for picture in log_par.save_pictures:
-        assert picture in names, 'Can not render unknown picture type: ' + picture
+        assert picture in names, f'Can not render unknown picture type: {picture}'
 
     if prev_checkpoint:
         for picture in log_par.clear_pictures:
-            pattern = prev_checkpoint + '*' + '_' + picture + '.png'
+            pattern = f'{prev_checkpoint}*_{picture}.png'
             paths = glob.glob(pattern)
             for path in paths:
                 os.remove(path)
@@ -241,11 +240,9 @@ class CheckpointTracker:
             passed_it_thresh = False
         if self.log_par.checkpoint_first_iteration:
             first_it = self.old_it == 0
-        else:
-            first_it = False
-        if self.log_par.checkpoint_first_iteration:
             last_it = not self.should_continue()
         else:
+            first_it = False
             last_it = False
         if self.log_par.checkpoint_time is not None:
             passed_time_thresh = (self.old_time_passed // self.log_par.checkpoint_time !=
@@ -271,9 +268,10 @@ class CheckpointTracker:
             return False
         if self.log_par.max_cells is not None and len(self.expl.archive.archive) >= self.log_par.max_cells:
             return False
-        if self.log_par.max_score is not None and self.expl.archive.max_score >= self.log_par.max_score:
-            return False
-        return True
+        return (
+            self.log_par.max_score is None
+            or self.expl.archive.max_score < self.log_par.max_score
+        )
 
 
 def _run(**kwargs):

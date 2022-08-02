@@ -32,9 +32,11 @@ class MontezumaPosLevel:
         return hash(self.tuple)
 
     def __eq__(self, other):
-        if not isinstance(other, MontezumaPosLevel):
-            return False
-        return self.tuple == other.tuple
+        return (
+            self.tuple == other.tuple
+            if isinstance(other, MontezumaPosLevel)
+            else False
+        )
 
     def __getstate__(self):
         return self.tuple
@@ -91,9 +93,7 @@ def get_room_xy(room):
 def clip(a, m, M):
     if a < m:
         return m
-    if a > M:
-        return M
-    return a
+    return M if a > M else a
 
 
 class MyMontezuma:
@@ -136,13 +136,11 @@ class MyMontezuma:
         if self.get_pos().room not in self.rooms:
             self.rooms[self.get_pos().room] = (False, unprocessed_state[50:].repeat(self.x_repeat, axis=1))
         self.room_time = (self.get_pos().room, 0)
-        if self.unprocessed_state:
-            return unprocessed_state
-        return copy.copy(self.state)
+        return unprocessed_state if self.unprocessed_state else copy.copy(self.state)
 
     def pos_from_unprocessed_state(self, face_pixels, unprocessed_state):
         face_pixels = [(y, x * self.x_repeat) for y, x in face_pixels]
-        if len(face_pixels) == 0:
+        if not face_pixels:
             assert self.pos != None, 'No face pixel and no previous pos'
             return self.pos  # Simply re-use the same position
         y, x = np.mean(face_pixels, axis=0)
@@ -167,25 +165,25 @@ class MyMontezuma:
                     assert room != -1, f'Impossible room change: ({direction_y}, {direction_x})'
 
         score = self.cur_score
-        if self.score_objects:  # TODO: detect objects from the frame!
-            if not self.objects_from_pixels:
+        if self.score_objects:
+            if self.objects_from_pixels:
+                score = self.get_objects_from_pixels(unprocessed_state, room, old_objects)
+            else:
                 score = self.ram[65]
                 if self.only_keys:
                     # These are the key bytes
                     score &= KEY_BITS
-            else:
-                score = self.get_objects_from_pixels(unprocessed_state, room, old_objects)
         return MontezumaPosLevel(level, score, room, x, y)
 
     def get_objects_from_pixels(self, unprocessed_state, room, old_objects):
         object_part = (unprocessed_state[25:45, 55:110, 0] != 0).astype(np.uint8) * 255
         connected_components = cv2.connectedComponentsWithStats(object_part)
-        pixel_areas = list(e[-1] for e in connected_components[2])[1:]
+        pixel_areas = [e[-1] for e in connected_components[2]][1:]
 
         if self.objects_remember_rooms:
             cur_object = []
             old_objects = list(old_objects)
-            for i, n_pixels in enumerate(OBJECT_PIXELS):
+            for n_pixels in OBJECT_PIXELS:
                 if n_pixels != 40 and self.only_keys:
                     continue
                 if n_pixels in pixel_areas:
@@ -264,10 +262,7 @@ class MyMontezuma:
         if len(face_pixels) == 0:
             # All of the screen except the bottom is black: this is not a death but a
             # room transition. Ignore.
-            if self.is_transition_screen(unprocessed_state):
-                return False
-            return True
-
+            return not self.is_transition_screen(unprocessed_state)
         # We already checked for the presence of no face pixels, however,
         # sometimes we can die and still have face pixels. In those cases,
         # the face pixels will be DISCONNECTED.
@@ -306,7 +301,7 @@ class MyMontezuma:
                 print(Counter(list(zip(unprocessed_state[51:, :, 0].flatten(), unprocessed_state[51:, :, 1].flatten(),
                                        unprocessed_state[51:, :, 2].flatten()))))
             done = True
-        elif self.check_death and not pixel_death and ram_death:
+        elif self.check_death and ram_death:
             if self.ram_death_state == -1:
                 self.ram_death_state = self.cur_steps
             if self.cur_steps - self.ram_death_state > 0 and not self.ignore_ram_death:

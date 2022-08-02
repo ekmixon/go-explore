@@ -63,9 +63,7 @@ def get_room_xy(room):
 def clip(a, min_v, max_v):
     if a < min_v:
         return min_v
-    if a > max_v:
-        return max_v
-    return a
+    return max_v if a > max_v else a
 
 
 def sum_two(a, b):
@@ -167,7 +165,7 @@ class MyMontezuma(MyWrapper):
     def pos_from_unprocessed_state(self, face_pixels, unprocessed_state, _death):
         face_pixels = [(y, x * self.x_repeat) for y, x in face_pixels]
         # While we are dead or if we are on a transition screen, we assume that our position does not change
-        if len(face_pixels) == 0:
+        if not face_pixels:
             assert self.pos is not None, 'No face pixel and no previous pos'
             return self.pos  # Simply re-use the same position
         y, x = np.mean(face_pixels, axis=0)
@@ -203,21 +201,21 @@ class MyMontezuma(MyWrapper):
                     direction_y = 0
 
                 assert direction_x == 0 or direction_y == 0, f'Room change in more than two directions : ' \
-                                                             f'({direction_y}, {direction_x}) room={self.room} ' \
-                                                             f'prev={self.x},{self.y} new={x},{y}'
+                                                                 f'({direction_y}, {direction_x}) room={self.room} ' \
+                                                                 f'prev={self.x},{self.y} new={x},{y}'
                 room = PYRAMID[room_y + direction_y][room_x + direction_x]
                 assert room != -1, f'Impossible room change: ({direction_y}, {direction_x})'
 
         score = self.cur_score
         if self.score_objects:
-            if not self.objects_from_pixels:
+            if self.objects_from_pixels:
+                score = self.get_objects_from_pixels(unprocessed_state, room, old_objects)
+
+            else:
                 score = self.ram[65]
                 if self.only_keys:
                     # These are the key bytes
                     score &= KEY_BITS
-            else:
-                score = self.get_objects_from_pixels(unprocessed_state, room, old_objects)
-
         self.level = level
         self.objects = score
         self.room = room
@@ -227,12 +225,12 @@ class MyMontezuma(MyWrapper):
     def get_objects_from_pixels(self, unprocessed_state, room, old_objects):
         object_part = (unprocessed_state[25:45, 55:110, 0] != 0).astype(np.uint8) * 255
         connected_components = cv2.connectedComponentsWithStats(object_part)
-        pixel_areas = list(e[-1] for e in connected_components[2])[1:]
+        pixel_areas = [e[-1] for e in connected_components[2]][1:]
 
         if self.objects_remember_rooms:
             cur_object = []
             old_objects = list(old_objects)
-            for i, n_pixels in enumerate(OBJECT_PIXELS):
+            for n_pixels in OBJECT_PIXELS:
                 if n_pixels != 40 and self.only_keys:
                     continue
                 if n_pixels in pixel_areas:
@@ -248,10 +246,7 @@ class MyMontezuma(MyWrapper):
             return tuple(cur_object)
 
         elif self.only_nb_keys:
-            cur_object = 0
-            for n_pixels in pixel_areas:
-                if n_pixels == NB_KEY_PIXELS:
-                    cur_object += 1
+            cur_object = sum(n_pixels == NB_KEY_PIXELS for n_pixels in pixel_areas)
             return cur_object
         else:
             cur_object = 0
@@ -313,10 +308,7 @@ class MyMontezuma(MyWrapper):
         if len(face_pixels) == 0:
             # All of the screen except the bottom is black: this is not a death but a
             # room transition. Ignore.
-            if transition_screen:
-                return False
-            return True
-
+            return not transition_screen
         # We already checked for the presence of no face pixels, however,
         # sometimes we can die and still have face pixels. In those cases,
         # the face pixels will be DISCONNECTED.

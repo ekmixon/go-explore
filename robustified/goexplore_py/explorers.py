@@ -92,8 +92,7 @@ class RandomDriftExplorerFetch:
         pass
 
     def get_action(self, env):
-        action = env.prev_action + np.random.randn(env.prev_action.size) * self.sd
-        return action
+        return env.prev_action + np.random.randn(env.prev_action.size) * self.sd
 
     def __repr__(self):
         return f'drift-{self.sd}'

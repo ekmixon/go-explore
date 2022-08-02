@@ -95,10 +95,7 @@ class Discretizer:
     def apply_rec(self, obj):
         if isinstance(obj, (list, tuple, np.ndarray)):
             res = tuple(self.apply_rec(e) for e in obj)
-            if self.sort:
-                return tuple(sorted(res))
-            else:
-                return res
+            return tuple(sorted(res)) if self.sort else res
         return self.apply_scalar(obj)
 
 
@@ -112,7 +109,7 @@ class FetchConditionalObject:
         self.attr = self.ifinpos.attr
 
     def apply(self, obj):
-        if set(obj.object_pos) == set(['0000']) or self.object_pos in obj.object_pos:
+        if set(obj.object_pos) == {'0000'} or self.object_pos in obj.object_pos:
             return self.ifinpos.apply(obj)
         else:
             return self.ifnotinpos.apply(obj)
@@ -295,8 +292,7 @@ class RotatingSet:
         assert len(self.list) == len(self.set)
 
     def __iter__(self):
-        for e in self.list:
-            yield e
+        yield from self.list
 
     def __len__(self):
         return len(self.list)
@@ -473,12 +469,13 @@ class Explore:
             from math import log
             def ent(dist):
                 return -sum(log(e) * e for e in dist)
+
             def unif_ent(l):
-                if l not in unif_ent_cache:
-                    return ent([1 / l] * l)
-                return unif_ent_cache[l]
+                return ent([1 / l] * l) if l not in unif_ent_cache else unif_ent_cache[l]
+
             def norment(dist):
                 return ent(dist) / unif_ent(len(dist))
+
             target_len = len(frames) * self.args.cell_split_factor
             return norment(dist) / np.sqrt(abs(len(dist) - target_len) / target_len + 1)
 
@@ -560,155 +557,155 @@ class Explore:
         return best_shape, best_pix_val, best_n
 
     def maybe_split_dynamic_state(self):
-        if (self.frames_compute - self.last_recompute_dynamic_state > self.args.recompute_dynamic_state_every or
-                len(self.grid) > self.args.max_archive_size):
-            if len(self.grid) > self.args.max_archive_size:
-                tqdm.write('Recomputing representation because of archive size (should not happen too often)')
-            self.save_checkpoint('_pre_recompute')
-            self.last_recompute_dynamic_state = self.frames_compute
+        if (
+            self.frames_compute - self.last_recompute_dynamic_state
+            <= self.args.recompute_dynamic_state_every
+            and len(self.grid) <= self.args.max_archive_size
+        ):
+            return
+        if len(self.grid) > self.args.max_archive_size:
+            tqdm.write('Recomputing representation because of archive size (should not happen too often)')
+        self.save_checkpoint('_pre_recompute')
+        self.last_recompute_dynamic_state = self.frames_compute
 
-            tqdm.write('Recomputing state representation')
-            best_shape, best_pix_val, best_n = self.try_split_frames(self.random_recent_frames)
-            tqdm.write(f'Switching representation to {best_shape} with {best_pix_val} pixels ({best_n} / {len(self.random_recent_frames)})')
-            if self.dynamic_state_split_rules[0] is None:
-                self.grid = self.former_grids.pop()
-            self.dynamic_state_split_rules = (best_shape, best_pix_val, {})
+        tqdm.write('Recomputing state representation')
+        best_shape, best_pix_val, best_n = self.try_split_frames(self.random_recent_frames)
+        tqdm.write(f'Switching representation to {best_shape} with {best_pix_val} pixels ({best_n} / {len(self.random_recent_frames)})')
+        if self.dynamic_state_split_rules[0] is None:
+            self.grid = self.former_grids.pop()
+        self.dynamic_state_split_rules = (best_shape, best_pix_val, {})
 
-            self.random_recent_frames.clear()
+        self.random_recent_frames.clear()
 
-            self.selector.clear_all_cache()
-            self.former_grids.append(self.grid)
-            self.grid = defaultdict(Cell)
+        self.selector.clear_all_cache()
+        self.former_grids.append(self.grid)
+        self.grid = defaultdict(Cell)
 
-            start = time.time()
+        start = time.time()
 
-            for grid_idx in tqdm(reversed(range(len(self.former_grids))), desc='recompute_grid'):
-                tqdm.write('Loading grid')
-                old_grid = self.former_grids[grid_idx]
-                tqdm.write('Creating queues')
-                n_processes = multiprocessing.cpu_count()
-                to_process = multiprocessing.Queue()
-                returns = multiprocessing.Queue()
+        for grid_idx in tqdm(reversed(range(len(self.former_grids))), desc='recompute_grid'):
+            tqdm.write('Loading grid')
+            old_grid = self.former_grids[grid_idx]
+            tqdm.write('Creating queues')
+            n_processes = multiprocessing.cpu_count()
+            to_process = multiprocessing.Queue()
+            returns = multiprocessing.Queue()
 
-                def iter_grid(grid_idx, old_grid):
-                    tqdm.write('Iter grid')
-                    in_queue = set()
-                    has_had_timeout = [False]
+            def iter_grid(grid_idx, old_grid):
+                tqdm.write('Iter grid')
+                in_queue = set()
+                has_had_timeout = [False]
 
-                    def queue_process_min(min_size):
-                        while len(in_queue) > min_size:
-                            if has_had_timeout[0]:
-                                cur = in_queue.pop()
-                                _, old_key, new_key = get_repr(grid_idx, cur)
-                                yield old_key, old_grid[old_key], new_key
-                            else:
-                                import queue
-                                try:
-                                    _, old_key, new_key = returns.get(timeout=5*60)
-                                    if old_key in in_queue:
-                                        in_queue.remove(old_key)
-                                        yield old_key, old_grid[old_key], new_key
-                                    else:
-                                        tqdm.write(f'Warning: saw duplicate key: {old_key}')
-                                except queue.Empty:
-                                    has_had_timeout[0] = True
-                                    tqdm.write('Warning: timeout in receiving from queue. Switching to 100% single threaded')
+                def queue_process_min(min_size):
+                    while len(in_queue) > min_size:
+                        if has_had_timeout[0]:
+                            cur = in_queue.pop()
+                            _, old_key, new_key = get_repr(grid_idx, cur)
+                            yield old_key, old_grid[old_key], new_key
+                        else:
+                            import queue
+                            try:
+                                _, old_key, new_key = returns.get(timeout=5*60)
+                                if old_key in in_queue:
+                                    in_queue.remove(old_key)
+                                    yield old_key, old_grid[old_key], new_key
+                                else:
+                                    tqdm.write(f'Warning: saw duplicate key: {old_key}')
+                            except queue.Empty:
+                                has_had_timeout[0] = True
+                                tqdm.write('Warning: timeout in receiving from queue. Switching to 100% single threaded')
 
-                    for k in tqdm(old_grid, desc='add_to_grid'):
-                        for to_yield in queue_process_min(n_processes):
-                            yield to_yield
-                        if not has_had_timeout[0]:
-                            to_process.put((grid_idx, k), timeout=60)
-                        in_queue.add(k)
+                for k in tqdm(old_grid, desc='add_to_grid'):
+                    yield from queue_process_min(n_processes)
+                    if not has_had_timeout[0]:
+                        to_process.put((grid_idx, k), timeout=60)
+                    in_queue.add(k)
 
-                    tqdm.write('Clear queue')
-                    for to_yield in queue_process_min(0):
-                        yield to_yield
+                tqdm.write('Clear queue')
+                yield from queue_process_min(0)
+                tqdm.write('Done iter grid')
 
-                    tqdm.write('Done iter grid')
+            def get_repr(i_grid, key):
+                frame = self.former_grids[i_grid][key].cell_frame
+                if frame is None or key is None:
+                    return ((i_grid, key, key))
+                else:
+                    return ((i_grid, key, self.get_dynamic_repr(frame)))
 
-                def get_repr(i_grid, key):
-                    frame = self.former_grids[i_grid][key].cell_frame
-                    if frame is None or key is None:
-                        return ((i_grid, key, key))
-                    else:
-                        return ((i_grid, key, self.get_dynamic_repr(frame)))
+            def redo_repr():
+                while True:
+                    i_grid, key = to_process.get()
+                    if i_grid is None:
+                        return
+                    returns.put(get_repr(i_grid, key))
 
-                def redo_repr():
-                    while True:
-                        i_grid, key = to_process.get()
-                        if i_grid is None:
-                            return
-                        returns.put(get_repr(i_grid, key))
+            tqdm.write('creating processes')
+            processes = [multiprocessing.Process(target=redo_repr) for _ in range(n_processes)]
+            tqdm.write('starting processes')
+            for p in processes:
+                p.start()
+            tqdm.write('processes started')
+            for cell_key, cell, new_key in iter_grid(grid_idx, old_grid):
+                if new_key not in self.grid or self.should_accept_cell(self.grid[new_key], cell.score, cell.trajectory_len):
+                    if new_key not in self.grid:
+                        self.grid[new_key] = Cell()
+                    self.grid[new_key].score = cell.score
+                    self.grid[new_key].trajectory_len = cell.trajectory_len
+                    self.grid[new_key].restore = cell.restore
+                    self.grid[new_key].exact_pos = cell.exact_pos
+                    self.grid[new_key].real_cell = cell.real_cell
+                    self.grid[new_key].traj_last = cell.traj_last
+                    self.grid[new_key].cell_frame = cell.cell_frame
+                    if self.args.reset_cell_on_update:
+                        self.grid[new_key].set_seen_times(cell.seen_times)
+                        self.grid[new_key].set_chosen_times(cell.chosen_times)
+                        self.grid[new_key].set_chosen_since_new(cell.chosen_since_new)
+                        self.grid[new_key].set_action_times(cell.action_times)
 
-                tqdm.write('creating processes')
-                processes = [multiprocessing.Process(target=redo_repr) for _ in range(n_processes)]
-                tqdm.write('starting processes')
-                for p in processes:
-                    p.start()
-                tqdm.write('processes started')
-                for cell_key, cell, new_key in iter_grid(grid_idx, old_grid):
-                    if new_key not in self.grid or self.should_accept_cell(self.grid[new_key], cell.score, cell.trajectory_len):
-                        if new_key not in self.grid:
-                            self.grid[new_key] = Cell()
-                        self.grid[new_key].score = cell.score
-                        self.grid[new_key].trajectory_len = cell.trajectory_len
-                        self.grid[new_key].restore = cell.restore
-                        self.grid[new_key].exact_pos = cell.exact_pos
-                        self.grid[new_key].real_cell = cell.real_cell
-                        self.grid[new_key].traj_last = cell.traj_last
-                        self.grid[new_key].cell_frame = cell.cell_frame
-                        if self.args.reset_cell_on_update:
-                            self.grid[new_key].set_seen_times(cell.seen_times)
-                            self.grid[new_key].set_chosen_times(cell.chosen_times)
-                            self.grid[new_key].set_chosen_since_new(cell.chosen_since_new)
-                            self.grid[new_key].set_action_times(cell.action_times)
+                if not self.args.reset_cell_on_update:
+                    # NB: this is the ONLY place where accessing these attributes using _ is valid!!!
+                    self.grid[new_key]._seen_times += cell.seen_times_diff
+                    self.grid[new_key]._chosen_times += cell.chosen_times_diff
+                    self.grid[new_key]._chosen_since_new += cell.chosen_since_new_diff
+                    self.grid[new_key]._action_times += cell.action_times_diff
 
-                    if not self.args.reset_cell_on_update:
-                        # NB: this is the ONLY place where accessing these attributes using _ is valid!!!
-                        self.grid[new_key]._seen_times += cell.seen_times_diff
-                        self.grid[new_key]._chosen_times += cell.chosen_times_diff
-                        self.grid[new_key]._chosen_since_new += cell.chosen_since_new_diff
-                        self.grid[new_key]._action_times += cell.action_times_diff
+                self.selector.cell_update(new_key, self.grid[new_key])
 
-                    self.selector.cell_update(new_key, self.grid[new_key])
+            tqdm.write('clearing processes')
+            for _ in range(n_processes):
+                to_process.put((None, None), block=False)
+            for p in tqdm(processes, desc='processes_clear'):
+                try:
+                    p.join(timeout=1)
+                except Exception:
+                    p.terminate()
+                    p.join()
+            tqdm.write('processes cleared')
 
-                tqdm.write('clearing processes')
-                for _ in range(n_processes):
-                    to_process.put((None, None), block=False)
-                for p in tqdm(processes, desc='processes_clear'):
-                    try:
-                        p.join(timeout=1)
-                    except Exception:
-                        p.terminate()
-                        p.join()
-                tqdm.write('processes cleared')
+        tqdm.write(f'Recomputing the grid took {time.time() - start} seconds')
 
-            tqdm.write(f'Recomputing the grid took {time.time() - start} seconds')
+        self.prev_len_grid = len(self.grid)
+        tqdm.write(f'New size: {len(self.grid)}. Old size: {len(self.former_grids[-1])}')
 
-            self.prev_len_grid = len(self.grid)
-            tqdm.write(f'New size: {len(self.grid)}. Old size: {len(self.former_grids[-1])}')
-
-            self.save_checkpoint('_post_recompute')
+        self.save_checkpoint('_post_recompute')
 
     def get_pos(self):
         if self.args.use_real_pos:
             return self.get_real_pos()
-        else:
-            if not self.pos_cache:
-                if self.args.dynamic_state:
-                    self.pos_cache = self.get_dynamic_repr(self.get_frame(False))
-                else:
-                    self.pos_cache = (self.get_frame(True),)
-            return self.pos_cache
+        if not self.pos_cache:
+            self.pos_cache = (
+                self.get_dynamic_repr(self.get_frame(False))
+                if self.args.dynamic_state
+                else (self.get_frame(True),)
+            )
+
+        return self.pos_cache
 
     def get_frame(self, asbytes):
         if not hasattr(ENV, 'state') or self.args.use_real_pos:
             return None
         frame = ENV.state[-1]
-        if asbytes:
-            return frame.tobytes()
-        return frame
+        return frame.tobytes() if asbytes else frame
 
     def get_real_pos(self):
         return ENV.get_pos()
@@ -734,24 +731,16 @@ class Explore:
     def get_real_cell(self):
         if self.real_cell is None:
             pos = self.get_real_pos()
-            res = {}
-            for dimension in self.grid_info:
-                res[dimension.attr] = dimension.apply(pos)
+            res = {dimension.attr: dimension.apply(pos) for dimension in self.grid_info}
             self.real_cell = pos.__class__(**res)
         return self.real_cell
 
     def get_cell(self):
-        if self.args.use_real_pos:
-            return self.get_real_cell()
-        else:
-            pos = self.get_pos()
-            return pos
+        return self.get_real_cell() if self.args.use_real_pos else self.get_pos()
 
     def run_explorer(self, explorer, start_cell=None, max_steps=-1):
         trajectory = []
-        while True:
-            if ((max_steps > 0 and len(trajectory) >= max_steps)):
-                break
+        while not (((max_steps > 0 and len(trajectory) >= max_steps))):
             action = explorer.get_action(ENV)
             state, reward, done, _ = self.step(action)
             self.frames_true += 1
@@ -792,15 +781,11 @@ class Explore:
         end_trajectory = self.run_seed(seed, max_steps=self.args.explore_steps)
 
         # # We are not done, check that doing nothing for self.args.ignore_death steps won't kill us.
-        if self.args.ignore_death > 0:
-            if not end_trajectory[-1].done:
-                assert self.args.ignore_death == 1
-                end_trajectory += self.run_explorer(DoNothingExplorer(), max_steps=self.args.ignore_death)
+        if self.args.ignore_death > 0 and not end_trajectory[-1].done:
+            assert self.args.ignore_death == 1
+            end_trajectory += self.run_explorer(DoNothingExplorer(), max_steps=self.args.ignore_death)
 
-        known_room_data = {}
-        if len(ENV.rooms) > known_rooms:
-            known_room_data = ENV.rooms
-
+        known_room_data = ENV.rooms if len(ENV.rooms) > known_rooms else {}
         return TimedPickle((cell_key, end_trajectory, self.frames_true, self.frames_compute, known_room_data), 'ret', enabled=info.enabled)
 
     def sample_only_cycle(self):
@@ -853,9 +838,12 @@ class Explore:
                 if i == len(end_trajectory) - self.args.ignore_death:
                     break
 
-                if not elem.done:
-                    if elem.to.frame is not None and (random.random() < self.args.recent_frame_add_prob):
-                        self.random_recent_frames.add(elem.to.frame)
+                if (
+                    not elem.done
+                    and elem.to.frame is not None
+                    and (random.random() < self.args.recent_frame_add_prob)
+                ):
+                    self.random_recent_frames.add(elem.to.frame)
 
 
     def run_cycle(self):

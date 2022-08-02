@@ -66,7 +66,7 @@ def get_game(game,
              end_on_death):
     game_lowered = game.lower()
     logger.info(f'Loading game: {game_lowered}')
-    if game_lowered == 'montezuma' or game_lowered == 'montezumarevenge':
+    if game_lowered in ['montezuma', 'montezumarevenge']:
         game_name = 'MontezumaRevenge'
         game_class = montezuma_env.MyMontezuma
         game_class.TARGET_SHAPE = target_shape
@@ -119,7 +119,7 @@ def get_game(game,
             GridDimension('x', x_res), GridDimension('y', y_res)
         )
     else:
-        raise NotImplementedError("Unknown game: " + game)
+        raise NotImplementedError(f"Unknown game: {game}")
     return game_name, game_class, game_args, grid_resolution
 
 
@@ -141,7 +141,7 @@ def get_frame_wrapper(frame_resize):
         new_height = 105
         new_width = 80
     else:
-        raise NotImplementedError("No such frame-size wrapper: " + frame_resize)
+        raise NotImplementedError(f"No such frame-size wrapper: {frame_resize}")
     return frame_resize_wrapper, new_height, new_width
 
 
@@ -202,28 +202,27 @@ def get_archive(archive_names,
             local_archives.append(domain_knowledge_archive)
 
     if pre_fill_archive is not None:
-        if 'file:' in pre_fill_archive:
-            file_name = pre_fill_archive.split(':')[1]
-            with gzip.open(file_name, 'rb') as file_handle:
-                archive = pickle.load(file_handle)
+        if 'file:' not in pre_fill_archive:
+            raise NotImplementedError(f"Unknown archive pre-fill: {pre_fill_archive}")
 
-            # Clear some, but not all information
-            logger.info('Using pre-filled archive.')
-            for key in archive:
-                archive[key].score = -float('inf')
-                archive[key].nb_seen = 0
-                archive[key].nb_chosen = 0
-                archive[key].nb_chosen_since_update = 0
-                archive[key].nb_chosen_since_to_new = 0
-                archive[key].nb_chosen_since_to_update = 0
-                archive[key].nb_actions = 0
-                archive[key].nb_chosen_for_exploration = 0
-                archive[key].nb_reached_for_exploration = 0
-                archive[key].reached.clear()
-            domain_knowledge_archive.archive = archive
-        else:
-            raise NotImplementedError("Unknown archive pre-fill: " + pre_fill_archive)
+        file_name = pre_fill_archive.split(':')[1]
+        with gzip.open(file_name, 'rb') as file_handle:
+            archive = pickle.load(file_handle)
 
+        # Clear some, but not all information
+        logger.info('Using pre-filled archive.')
+        for key in archive:
+            archive[key].score = -float('inf')
+            archive[key].nb_seen = 0
+            archive[key].nb_chosen = 0
+            archive[key].nb_chosen_since_update = 0
+            archive[key].nb_chosen_since_to_new = 0
+            archive[key].nb_chosen_since_to_update = 0
+            archive[key].nb_actions = 0
+            archive[key].nb_chosen_for_exploration = 0
+            archive[key].nb_reached_for_exploration = 0
+            archive[key].reached.clear()
+        domain_knowledge_archive.archive = archive
     if len(local_archives) > 1:
         archive_collection = archives.ArchiveCollection()
         for archive in local_archives:
@@ -244,20 +243,52 @@ def get_goal_rep(goal_representation_name: str,
                  rep_type: str,
                  rel_final_goal: bool,
                  rel_sub_goal: bool):
-    if goal_representation_name == 'raw':
+    if goal_representation_name == 'filter':
+        x_fac = new_width / 320.0
+        y_fac = new_height / 210.0
+        y_offset = 50
+        goal_representation = goal_rep.PosFilterGoalRep(
+            (new_width, new_height, 4),
+            int(x_res * x_fac),
+            int(y_res * y_fac),
+            y_offset=int(y_offset * y_fac),
+            goal_value=goal_value,
+            norm_const=[3, 3, 24],
+        )
+
+        policy_name = 'gru_filter_goal'
+    elif goal_representation_name == 'filter_pos_only':
+        y_offset = 50  # This accounts for the offset that the MR environment uses to determine the location of a cell
+        x_fac = new_width / 320.0
+        y_fac = new_height / 210.0
+        goal_representation = goal_rep.PosFilterGoalRep(
+            (new_width, new_height, 1),
+            int(x_res * x_fac),
+            int(y_res * y_fac),
+            y_offset=int(y_offset * y_fac),
+            goal_value=goal_value,
+            norm_const=[],
+            pos_only=True,
+        )
+
+        policy_name = 'gru_filter_goal'
+    elif goal_representation_name == 'onehot':
+        logger.debug(f'max values: {cell_representation.get_max_values()}')
+        goal_representation = goal_rep.OneHotGoalRep(rep_type, rel_final_goal, rel_sub_goal,
+                                                     cell_representation.get_max_values())
+        policy_name = 'gru_simple_goal'
+    elif goal_representation_name == 'onehot_r24':
+        goal_representation = goal_rep.OneHotGoalRep(rep_type, rel_final_goal, rel_sub_goal, [3, 3, 24, 20, 10])
+        policy_name = 'gru_simple_goal'
+    elif goal_representation_name == 'onehot_r25':
+        goal_representation = goal_rep.OneHotGoalRep(rep_type, rel_final_goal, rel_sub_goal, [3, 3, 25, 20, 10])
+        policy_name = 'gru_simple_goal'
+    elif goal_representation_name == 'raw':
         goal_representation = goal_rep.ScaledGoalRep(
             rep_type,
             rel_final_goal,
             rel_sub_goal,
             cell_representation.array_length)
-        policy_name = 'gru_simple_goal'
-    elif goal_representation_name == 'scaled_1_1_1':
-        goal_representation = goal_rep.ScaledGoalRep(
-            rep_type,
-            rel_final_goal,
-            rel_sub_goal,
-            cell_representation.array_length,
-            norm_const=[1, 1, 1, 20, 10])
         policy_name = 'gru_simple_goal'
     elif goal_representation_name == 'scaled':
         goal_representation = goal_rep.ScaledGoalRep(
@@ -267,48 +298,19 @@ def get_goal_rep(goal_representation_name: str,
             cell_representation.array_length,
             norm_const=[3, 3, 24, 20, 10])
         policy_name = 'gru_simple_goal'
-    elif goal_representation_name == 'onehot_r25':
-        goal_representation = goal_rep.OneHotGoalRep(rep_type, rel_final_goal, rel_sub_goal, [3, 3, 25, 20, 10])
+    elif goal_representation_name == 'scaled_1_1_1':
+        goal_representation = goal_rep.ScaledGoalRep(
+            rep_type,
+            rel_final_goal,
+            rel_sub_goal,
+            cell_representation.array_length,
+            norm_const=[1, 1, 1, 20, 10])
         policy_name = 'gru_simple_goal'
-    elif goal_representation_name == 'onehot_r24':
-        goal_representation = goal_rep.OneHotGoalRep(rep_type, rel_final_goal, rel_sub_goal, [3, 3, 24, 20, 10])
-        policy_name = 'gru_simple_goal'
-    elif goal_representation_name == 'onehot':
-        logger.debug(f'max values: {cell_representation.get_max_values()}')
-        goal_representation = goal_rep.OneHotGoalRep(rep_type, rel_final_goal, rel_sub_goal,
-                                                     cell_representation.get_max_values())
-        policy_name = 'gru_simple_goal'
-    elif goal_representation_name == 'filter_pos_only':
-        original_width = 320.0  # This includes the pixel-doubling that is done before the agent location is determined
-        original_height = 210.0
-        y_offset = 50  # This accounts for the offset that the MR environment uses to determine the location of a cell
-        x_fac = new_width / original_width
-        y_fac = new_height / original_height
-        goal_representation = goal_rep.PosFilterGoalRep(
-            (int(new_width), int(new_height), 1),
-            int(x_res*x_fac),
-            int(y_res*y_fac),
-            y_offset=int(y_offset*y_fac),
-            goal_value=goal_value,
-            norm_const=[],
-            pos_only=True)
-        policy_name = 'gru_filter_goal'
-    elif goal_representation_name == 'filter':
-        original_width = 320.0  # This includes the pixel-doubling that is done before the agent location is determined
-        original_height = 210.0
-        y_offset = 50  # This accounts for the offset that the MR environment uses to determine the location of a cell
-        x_fac = new_width / original_width
-        y_fac = new_height / original_height
-        goal_representation = goal_rep.PosFilterGoalRep(
-            (int(new_width), int(new_height), 4),
-            int(x_res*x_fac),
-            int(y_res*y_fac),
-            y_offset=int(y_offset*y_fac),
-            goal_value=goal_value,
-            norm_const=[3, 3, 24])
-        policy_name = 'gru_filter_goal'
     else:
-        raise NotImplementedError("No such goal representation: " + goal_representation_name)
+        raise NotImplementedError(
+            f"No such goal representation: {goal_representation_name}"
+        )
+
     return goal_representation, policy_name
 
 
@@ -363,25 +365,25 @@ def get_env(game_name,
             final_goal_reward
             ):
     logger.info(f'Creating environment for game: {game_name}')
-    temp_env = gym.make(game_name + 'NoFrameskip-v4')
+    temp_env = gym.make(f'{game_name}NoFrameskip-v4')
     set_action_meanings(temp_env.unwrapped.get_action_meanings())
 
     def make_env(rank):
         def env_fn():
             logger.debug(f'Process seed set to: {rank} seed: {seed + rank}')
             set_global_seeds(seed + rank)
-            env_id = game_name + 'NoFrameskip-v4'
+            env_id = f'{game_name}NoFrameskip-v4'
             if max_episode_steps is not None:
                 gym.spec(env_id).max_episode_steps = max_episode_steps
             local_env = gym.make(env_id)
             set_action_meanings(local_env.unwrapped.get_action_meanings())
             local_env = game_class(local_env, **game_args)
             # Even if make video is true, only define it for one of our environments
-            if make_video and rank % nb_envs == 0 and hvd.local_rank() == 0:
-                make_video_local = True
-            else:
-                make_video_local = False
-            video_file_prefix = save_path + '/vids/' + game_name
+            make_video_local = bool(
+                make_video and rank % nb_envs == 0 and hvd.local_rank() == 0
+            )
+
+            video_file_prefix = f'{save_path}/vids/{game_name}'
             video_writer = wrappers.VideoWriter(
                 local_env,
                 video_file_prefix,
@@ -392,10 +394,12 @@ def get_env(game_name,
                 plot_return_prob=plot_return_prob,
                 one_vid_per_goal=one_vid_per_goal,
                 make_video=make_video_local,
-                directory=save_path + '/vids',
+                directory=f'{save_path}/vids',
                 pixel_repetition=pixel_repetition,
                 plot_grid=plot_grid,
-                plot_sub_goal=plot_sub_goal)
+                plot_sub_goal=plot_sub_goal,
+            )
+
             local_env = video_writer
             local_env = wrappers.my_wrapper(
                 local_env,
@@ -440,7 +444,9 @@ def get_env(game_name,
                     sil_invalid=(sil == 'sil')
                 )
             return local_env
+
         return env_fn
+
     logger.info(f'Creating: {nb_envs} environments.')
     env_factories = [make_env(i + nb_envs * hvd.rank()) for i in range(nb_envs)]
     env = ge_wrappers.GoalConSubprocVecEnv(env_factories, start_method)
@@ -451,8 +457,9 @@ def get_env(game_name,
 
 
 def get_policy(policy_name):
-    policy = {'gru_simple_goal': ge_policies.GRUPolicyGoalConSimpleFlexEnt}[policy_name]
-    return policy
+    return {'gru_simple_goal': ge_policies.GRUPolicyGoalConSimpleFlexEnt}[
+        policy_name
+    ]
 
 
 def process_defaults(kwargs):

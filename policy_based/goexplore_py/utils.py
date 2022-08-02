@@ -53,7 +53,7 @@ def use_seed(seed):
 def get_code_hash():
     cur_dir = os.path.dirname(os.path.realpath(__file__))
     all_code = ''
-    for f in sorted(glob.glob(cur_dir + '**/*.py', recursive=True)):
+    for f in sorted(glob.glob(f'{cur_dir}**/*.py', recursive=True)):
         # We assume all whitespace is irrelevant, as well as comments
         with open(f) as fh:
             for line in fh:
@@ -62,9 +62,7 @@ def get_code_hash():
 
                 all_code += ''.join(line.split())
 
-    code_hash = hashlib.sha256(all_code.encode('utf8')).hexdigest()
-
-    return code_hash
+    return hashlib.sha256(all_code.encode('utf8')).hexdigest()
 
 
 def clip(value, low, high):

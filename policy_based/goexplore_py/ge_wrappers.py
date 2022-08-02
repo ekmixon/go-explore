@@ -90,8 +90,8 @@ class GoalConVecGoalStack(VecWrapper):
         super(GoalConVecGoalStack, self).__init__(venv)
         observation_space = venv.observation_space
         old_shape = observation_space.low.shape
-        new_shape = old_shape[0:-1] + (old_shape[-1] + goal_rep.shape[-1], )
-        filter_shape = old_shape[0:-1] + (goal_rep.shape[-1],)
+        new_shape = old_shape[:-1] + (old_shape[-1] + goal_rep.shape[-1], )
+        filter_shape = old_shape[:-1] + (goal_rep.shape[-1],)
         sheet = np.zeros(filter_shape, observation_space.low.dtype)
         ob_low = np.concatenate([observation_space.low, sheet], axis=-1)
         ob_high = np.concatenate([observation_space.high, sheet], axis=-1)
@@ -216,7 +216,7 @@ class DomKnowNeighborGoalExplorer(GoalExplorer):
                         possible_neighbor not in go_explore_env.locally_explored):
                     unknown_neighbors.append(possible_neighbor)
                 possible_neighbors.append(possible_neighbor)
-        if len(unknown_neighbors) > 0 and random.random() > 0.9:
+        if unknown_neighbors and random.random() > 0.9:
             target_cell = random.choice(unknown_neighbors)
         elif len(possible_neighbors) > 0 and random.random() > 0.75:
             target_cell = random.choice(possible_neighbors)
@@ -290,7 +290,7 @@ class EntropyManager:
             else:
                 return self.ent_fac
 
-        if not (self.ret_inc_ent_fac == 0 and self.ret_inc_ent_thresh == -1):
+        if self.ret_inc_ent_fac != 0 or self.ret_inc_ent_thresh != -1:
             if self.legacy_entropy:
                 deadline = env.goal_cell_info.trajectory_len * self.ret_inc_ent_fac + self.ret_inc_ent_thresh
                 return self._get_inc_entropy(env.actions_to_goal, deadline)
@@ -301,7 +301,7 @@ class EntropyManager:
         return 1
 
     def get_exploration_entropy(self, env):
-        if not self.expl_inc_ent_thresh == -1:
+        if self.expl_inc_ent_thresh != -1:
             if self.expl_ent_reset == 'on_new_cell':
                 return self._get_inc_entropy(env.expl_steps_since_new_cell, self.expl_inc_ent_thresh)
             elif self.expl_ent_reset == 'on_goal_reached':

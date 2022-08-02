@@ -50,5 +50,7 @@ class RunnerFlexEntSilProper(ppo.Runner):
         self.ar_mb_sil_valid = ppo.sf01(np.asarray(self.mb_sil_valid[:end], dtype=np.float32), 'sil_valids')
         self.ar_mb_sil_actions = ppo.sf01(np.asarray(self.mb_sil_actions[:end]), 'sil_actions')
         self.ar_mb_sil_rew = ppo.sf01(np.asarray(self.mb_sil_rew[:end], dtype=np.float32), 'sil_rewards')
-        self.trunc_lst_mb_sil_valid = ppo.sf01(np.asarray(self.mb_sil_valid[-len(self.mb_cells):len(self.mb_sil_valid)],
-                                                          dtype=np.float32), 'trunc_sil_valids')
+        self.trunc_lst_mb_sil_valid = ppo.sf01(
+            np.asarray(self.mb_sil_valid[-len(self.mb_cells) :], dtype=np.float32),
+            'trunc_sil_valids',
+        )

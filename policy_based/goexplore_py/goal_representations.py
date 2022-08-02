@@ -34,7 +34,7 @@ class FlatGoalRep(AbstractGoalRepresentation):
             self.total_length = (self._get_length(self.rel_final_goal, length_data) +
                                  self._get_length(self.rel_sub_goal, length_data))
         else:
-            raise NotImplementedError('Unknown representation type: ' + self.rep_type)
+            raise NotImplementedError(f'Unknown representation type: {self.rep_type}')
 
     def get_goal_space(self):
         raise NotImplementedError('get_goal_space needs to be implemented.')
@@ -49,7 +49,7 @@ class FlatGoalRep(AbstractGoalRepresentation):
             sub_rep = self._get_goal_rep(sub_goal, current_cell, self.rel_sub_goal)
             return np.concatenate((sub_rep, final_rep))
         else:
-            raise NotImplementedError('Unknown representation type: ' + self.rep_type)
+            raise NotImplementedError(f'Unknown representation type: {self.rep_type}')
 
     def _get_length(self, relative: bool, length_data: Any):
         raise NotImplementedError('_get_length needs to be implemented.')
@@ -140,10 +140,7 @@ class OneHotGoalRep(FlatGoalRep):
         return goal_rep
 
     def _get_length(self, relative: bool, rep_lengths):
-        if relative:
-            return (sum(rep_lengths) * 2) - 1
-        else:
-            return sum(rep_lengths)
+        return (sum(rep_lengths) * 2) - 1 if relative else sum(rep_lengths)
 
 
 class PosFilterGoalRep(AbstractGoalRepresentation):
@@ -161,7 +158,7 @@ class PosFilterGoalRep(AbstractGoalRepresentation):
             sub_rep = self._get_goal_rep(sub_goal)
             return np.concatenate((sub_rep, final_rep))
         else:
-            raise NotImplementedError('Unknown representation type: ' + self.rep_type)
+            raise NotImplementedError(f'Unknown representation type: {self.rep_type}')
 
     def __init__(self, shape, x_res, y_res, x_offset=0, y_offset=0, goal_value=1, norm_const=None, pos_only=False,
                  rep_type='final_goal'):

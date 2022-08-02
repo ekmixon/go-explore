@@ -58,11 +58,11 @@ class CellRepresentationFactory:
 
     def set_grid_resolution(self, grid_resolution):
         self.grid_resolution = grid_resolution
-        self.grid_res_dict = {}
         self.max_values = []
 
-        for dimension in self.grid_resolution:
-            self.grid_res_dict[dimension.attr] = dimension.div
+        self.grid_res_dict = {
+            dimension.attr: dimension.div for dimension in self.grid_resolution
+        }
 
         for attr_name in self.cell_rep_class.get_attributes():
             max_val = self.cell_rep_class.get_attr_max(attr_name)
@@ -87,9 +87,7 @@ class RoomXY(CellRepresentationBase):
 
     @staticmethod
     def get_attr_max(name):
-        if name == 'done':
-            return 2
-        return MyPitfall.get_attr_max(name)
+        return 2 if name == 'done' else MyPitfall.get_attr_max(name)
 
     @staticmethod
     def get_array_length():
@@ -163,9 +161,7 @@ class RoomXY(CellRepresentationBase):
         return hash(self.tuple)
 
     def __eq__(self, other):
-        if not isinstance(other, RoomXY):
-            return False
-        return self.tuple == other.tuple
+        return self.tuple == other.tuple if isinstance(other, RoomXY) else False
 
     def __getstate__(self):
         return self.tuple
@@ -186,9 +182,7 @@ class PitfallPosLevel(CellRepresentationBase):
 
     @staticmethod
     def get_attr_max(name):
-        if name == 'done':
-            return 2
-        return MyPitfall.get_attr_max(name)
+        return 2 if name == 'done' else MyPitfall.get_attr_max(name)
 
     @staticmethod
     def get_array_length():
@@ -273,9 +267,11 @@ class PitfallPosLevel(CellRepresentationBase):
         return hash(self.tuple)
 
     def __eq__(self, other):
-        if not isinstance(other, PitfallPosLevel):
-            return False
-        return self.tuple == other.tuple
+        return (
+            self.tuple == other.tuple
+            if isinstance(other, PitfallPosLevel)
+            else False
+        )
 
     def __getstate__(self):
         return self.tuple
@@ -296,9 +292,7 @@ class MontezumaPosLevel(CellRepresentationBase):
 
     @staticmethod
     def get_attr_max(name):
-        if name == 'done':
-            return 2
-        return MyMontezuma.get_attr_max(name)
+        return 2 if name == 'done' else MyMontezuma.get_attr_max(name)
 
     @staticmethod
     def get_array_length():
@@ -403,9 +397,11 @@ class MontezumaPosLevel(CellRepresentationBase):
         return hash(self.tuple)
 
     def __eq__(self, other):
-        if not isinstance(other, MontezumaPosLevel):
-            return False
-        return self.tuple == other.tuple
+        return (
+            self.tuple == other.tuple
+            if isinstance(other, MontezumaPosLevel)
+            else False
+        )
 
     def __getstate__(self):
         return self.tuple
@@ -434,9 +430,7 @@ class LevelKeysRoomXYScore(CellRepresentationBase):
     def get_attr_max(name):
         if name == 'done':
             return 2
-        if name == 'score':
-            return 0
-        return MyMontezuma.get_attr_max(name)
+        return 0 if name == 'score' else MyMontezuma.get_attr_max(name)
 
     @staticmethod
     def get_array_length():
@@ -551,9 +545,11 @@ class LevelKeysRoomXYScore(CellRepresentationBase):
         return hash(self.tuple)
 
     def __eq__(self, other):
-        if not isinstance(other, LevelKeysRoomXYScore):
-            return False
-        return self.tuple == other.tuple
+        return (
+            self.tuple == other.tuple
+            if isinstance(other, LevelKeysRoomXYScore)
+            else False
+        )
 
     def __getstate__(self):
         return self.tuple

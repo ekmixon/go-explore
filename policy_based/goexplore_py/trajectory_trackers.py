@@ -33,9 +33,7 @@ class TrajectoryTracker:
 
     def get_steps(self, r_index=0):
         c_index = self.trajectory_index + r_index
-        if len(self.cumulative_actions) == 0:
-            return 0
-        elif c_index < 0:
+        if len(self.cumulative_actions) == 0 or c_index < 0:
             return 0
         elif c_index < len(self.cumulative_actions):
             return self.cumulative_actions[c_index]
@@ -136,16 +134,15 @@ class SequentialTrajectoryTracker(TrajectoryTracker):
         self.trajectory_index = 0
         self.cell_trajectory = cell_trajectory
 
-        if self.trajectory_index < len(self.cell_trajectory):
-            self.sub_goal = self.cell_trajectory[self.trajectory_index][0]
-            return self.sub_goal
-        else:
+        if self.trajectory_index >= len(self.cell_trajectory):
             return final_goal
+        self.sub_goal = self.cell_trajectory[self.trajectory_index][0]
+        return self.sub_goal
 
     def step(self, current_cell, final_goal) -> [Any, float, bool]:
         reward = 0
         sub_goal_reached = False
-        if not self.trajectory_index < len(self.cell_trajectory):
+        if self.trajectory_index >= len(self.cell_trajectory):
             return final_goal, 0, False
         if self.cell_reached(current_cell, self.sub_goal) and self.trajectory_index + 1 < len(self.cell_trajectory):
             self.trajectory_index += 1
@@ -170,16 +167,15 @@ class SoftTrajectoryTracker(TrajectoryTracker):
         self.trajectory_index = 0
         self.cell_trajectory = cell_trajectory
 
-        if self.trajectory_index < len(self.cell_trajectory):
-            self.sub_goal = self.cell_trajectory[self.trajectory_index][0]
-            return self.sub_goal
-        else:
+        if self.trajectory_index >= len(self.cell_trajectory):
             return final_goal
+        self.sub_goal = self.cell_trajectory[self.trajectory_index][0]
+        return self.sub_goal
 
     def step(self, current_cell, final_goal) -> [Any, float, bool]:
         reward = 0
         sub_goal_reached = False
-        if not self.trajectory_index < len(self.cell_trajectory):
+        if self.trajectory_index >= len(self.cell_trajectory):
             return final_goal, 0, False
 
         steps_remaining = self.window_size
@@ -217,17 +213,16 @@ class SparseSoftTrajectoryTracker(TrajectoryTracker):
         self.trajectory_index = 0
         self.cell_trajectory = cell_trajectory
 
-        if self.trajectory_index < len(self.cell_trajectory):
-            self.sub_goal = self.cell_trajectory[self.trajectory_index][0]
-            return self.sub_goal
-        else:
+        if self.trajectory_index >= len(self.cell_trajectory):
             return final_goal
+        self.sub_goal = self.cell_trajectory[self.trajectory_index][0]
+        return self.sub_goal
 
     def step(self, current_cell, final_goal) -> [Any, float, bool]:
         reward = 0
         sub_goal_reached = False
 
-        if not self.trajectory_index < len(self.cell_trajectory):
+        if self.trajectory_index >= len(self.cell_trajectory):
             return final_goal, 0, False
 
         for i in reversed(range(min(self.window_size, len(self.cell_trajectory) - self.trajectory_index))):
@@ -253,7 +248,7 @@ class DelayedSoftTrajectoryTracker(SparseSoftTrajectoryTracker):
         reward = 0
         sub_goal_reached = False
 
-        if not self.trajectory_index < len(self.cell_trajectory):
+        if self.trajectory_index >= len(self.cell_trajectory):
             return final_goal, 0, False
 
         # The highlighted cell is reached
@@ -269,7 +264,7 @@ class DelayedSoftTrajectoryTracker(SparseSoftTrajectoryTracker):
 
         # Look through the soft-part of the trajectory
         in_soft_traj = False
-        for i in reversed(range(0, min(self.window_size, len(self.cell_trajectory) - self.trajectory_index))):
+        for i in reversed(range(min(self.window_size, len(self.cell_trajectory) - self.trajectory_index))):
             if self.cell_reached(current_cell, self.cell_trajectory[self.trajectory_index + i][0]):
                 self.time_in_soft += 1
                 in_soft_traj = True
@@ -334,20 +329,20 @@ class SparseTrajectoryTracker(TrajectoryTracker):
             total_actions += actions
             self.cumulative_actions.append(total_actions)
 
-        for super_cell in super_cell_trajectory:
-            self.cell_trajectory.append(super_cell[-1])
+        self.cell_trajectory.extend(
+            super_cell[-1] for super_cell in super_cell_trajectory
+        )
 
-        if self.trajectory_index < len(self.cell_trajectory):
-            self.sub_goal = self.cell_trajectory[self.trajectory_index]
-            return self.sub_goal
-        else:
+        if self.trajectory_index >= len(self.cell_trajectory):
             return final_goal
+        self.sub_goal = self.cell_trajectory[self.trajectory_index]
+        return self.sub_goal
 
     def step(self, current_cell, final_goal) -> [Any, float, bool]:
         reward = 0
         sub_goal_reached = False
 
-        if not self.trajectory_index < len(self.cell_trajectory):
+        if self.trajectory_index >= len(self.cell_trajectory):
             return final_goal, 0, False
         if self.cell_reached(current_cell, self.sub_goal):
             self.trajectory_index += 1

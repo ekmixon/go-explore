@@ -28,7 +28,7 @@ import functools
 
 FETCH_SZ = (752, 912)
 DIR_PATH = os.path.dirname(os.path.realpath(__file__))
-FONT = ImageFont.truetype(DIR_PATH + "/../atari_reset/helvetica.ttf", 28)
+FONT = ImageFont.truetype(f"{DIR_PATH}/../atari_reset/helvetica.ttf", 28)
 
 compress = gzip
 
@@ -65,10 +65,18 @@ class MujocoDemo(gym.Wrapper):
             self.info.append(info)
 
         # periodic checkpoint saving
-        if not done:
-            if (len(self.checkpoint_action_nr)>0 and len(self.actions) >= self.checkpoint_action_nr[-1] + self.save_every_k) \
-                    or (len(self.checkpoint_action_nr)==0 and len(self.actions) >= self.save_every_k):
-                self.save_checkpoint()
+        if not done and (
+            (
+                len(self.checkpoint_action_nr) > 0
+                and len(self.actions)
+                >= self.checkpoint_action_nr[-1] + self.save_every_k
+            )
+            or (
+                len(self.checkpoint_action_nr) == 0
+                and len(self.actions) >= self.save_every_k
+            )
+        ):
+            self.save_checkpoint()
 
         return obs, reward, done, info
 
@@ -295,9 +303,17 @@ def maybe_render(game, vid, env, total, reward, n_steps, done):
 def run(args):
     global TREE
     pool = multiprocessing.Pool(24)
-    experience_files = [e for e in sorted(glob.glob(args.source + f'/*_experience.{args.compress}'), key=sort_experience) if 'thisisfake' not in e]
+    experience_files = [
+        e
+        for e in sorted(
+            glob.glob(f'{args.source}/*_experience.{args.compress}'),
+            key=sort_experience,
+        )
+        if 'thisisfake' not in e
+    ]
 
-    if len(experience_files) == 0:
+
+    if not experience_files:
         print('No experience files!')
         return
     if int(experience_files[-1].split('/')[-1].split('_')[1]) < args.min_compute_steps:
@@ -470,7 +486,13 @@ if __name__ == '__main__':
             not_args[0] = neg
         if isinstance(neg, list):
             not_args = neg
-        group.add_argument(*not_args, dest=dest, action='store_false', help=f'Opposite of {arg}' + (' (DEFAULT)' if not default else ''), default=default)
+        group.add_argument(
+            *not_args,
+            dest=dest,
+            action='store_false',
+            help=f'Opposite of {arg}' + ('' if default else ' (DEFAULT)'),
+            default=default,
+        )
 
     def add_argument(*args, **kwargs):
         if 'help' in kwargs and kwargs.get('default') is not None:

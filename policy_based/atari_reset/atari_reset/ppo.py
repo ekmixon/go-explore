@@ -93,7 +93,7 @@ class Model(object):
         self.approxkl = .5 * tf.reduce_mean(self.VALID * tf.square(neglogpac - self.OLDNEGLOGPAC)) / mv
         self.clipfrac = tf.reduce_mean(self.VALID * tf.to_float(tf.greater(tf.abs(ratio - 1.0), cliprange))) / mv
         self.params = tf.trainable_variables()
-        self.l2_loss = .5 * sum([tf.reduce_sum(tf.square(p)) for p in self.params])
+        self.l2_loss = .5 * sum(tf.reduce_sum(tf.square(p)) for p in self.params)
         self.disable_hvd = disable_hvd
 
     def finalize(self, load_path, adam_epsilon):
@@ -134,11 +134,7 @@ class Model(object):
                 self.loss_enabled.append(False)
 
     def filter_requested_losses(self, losses):
-        result = []
-        for loss, enabled in zip(losses, self.loss_enabled):
-            if enabled:
-                result.append(loss)
-        return result
+        return [loss for loss, enabled in zip(losses, self.loss_enabled) if enabled]
 
     def save(self, save_path):
         ps = self.sess.run(self.params)
@@ -146,9 +142,10 @@ class Model(object):
 
     def load(self, load_path):
         loaded_params = joblib.load(load_path)
-        restores = []
-        for p, loaded_p in zip(self.params, loaded_params):
-            restores.append(p.assign(loaded_p))
+        restores = [
+            p.assign(loaded_p) for p, loaded_p in zip(self.params, loaded_params)
+        ]
+
         self.sess.run(restores)
 
 
@@ -291,11 +288,13 @@ class Runner(object):
         return result
 
     def init_trajectory_id(self, archive):
-        relevant = set()
-        for trajectory_id in archive.cell_trajectory_manager.cell_trajectories:
-            if (hvd.rank()+1) * (sys.maxsize // hvd.size()) > trajectory_id > hvd.rank() * (sys.maxsize // hvd.size()):
-                relevant.add(trajectory_id)
-        if len(relevant) > 0:
+        if relevant := {
+            trajectory_id
+            for trajectory_id in archive.cell_trajectory_manager.cell_trajectories
+            if (hvd.rank() + 1) * (sys.maxsize // hvd.size())
+            > trajectory_id
+            > hvd.rank() * (sys.maxsize // hvd.size())
+        }:
             self.local_traj_counter = (max(relevant) - hvd.rank() * (sys.maxsize // hvd.size())) + 1
         else:
             self.local_traj_counter = 0

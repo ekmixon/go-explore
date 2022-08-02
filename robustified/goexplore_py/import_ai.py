@@ -89,24 +89,21 @@ try:
                 self.write(f'{self.get_desc_str():16}[{self.get_prog_str():26}{self.get_speed_str(cur_time):13}]' + (' DONE' if done else ''))
 
             def get_desc_str(self):
-                if self.desc is None:
-                    return ''
-                return f'{self.desc}: '
+                return '' if self.desc is None else f'{self.desc}: '
 
             def get_prog_str(self):
                 total_str = ''
                 if isinstance(self.n, int):
-                    if self.total is not None:
+                    if self.total is None:
+                        total_str = f'{str(self.n)}it'
+                    else:
                         total_substr = f'{int(self.total)}'
                         total_str = f'{self.n / self.total * 100:2.0f}% {self.n:{len(total_substr)}}it/{total_substr}'
-                    else:
-                        total_str = str(self.n) + 'it'
+                elif self.total is not None:
+                    total_substr = f'{self.total:.1f}'
+                    total_str = f'{self.n / self.total * 100:2.0f}% {self.n:{len(total_substr)}.1f}it/{total_substr}'
                 else:
-                    if self.total is not None:
-                        total_substr = f'{self.total:.1f}'
-                        total_str = f'{self.n / self.total * 100:2.0f}% {self.n:{len(total_substr)}.1f}it/{total_substr}'
-                    else:
-                        total_str = f'{self.n:.1f}it'
+                    total_str = f'{self.n:.1f}it'
                 return total_str
 
             def get_speed_str(self, cur_time):
@@ -115,9 +112,7 @@ try:
                 speed = self.n / (cur_time - self.start_time)
                 if speed > 1:
                     return f' {speed:.1f}it/s'
-                if speed < 0.000000000001:
-                    return ''
-                return f' {1/speed:.1f}s/it'
+                return '' if speed < 0.000000000001 else f' {1/speed:.1f}s/it'
 
             @classmethod
             def write(cls, str):

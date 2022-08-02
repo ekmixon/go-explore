@@ -12,7 +12,7 @@ import linecache
 def display_top(snapshot, key_type='traceback', limit=20):
     top_stats = snapshot.statistics(key_type)
 
-    print("Top %s lines" % limit)
+    print(f"Top {limit} lines")
     for index, stat in enumerate(top_stats[:limit], 1):
         frame = stat.traceback[0]
         filename = frame.filename
@@ -24,10 +24,9 @@ def display_top(snapshot, key_type='traceback', limit=20):
             print(frame)
 
         if line:
-            print('    %s' % line)
+            print(f'    {line}')
 
-    other = top_stats[limit:]
-    if other:
+    if other := top_stats[limit:]:
         size = sum(stat.size for stat in other)
         print("%s other: %.1f MB" % (len(other), size / (1024*1024)))
     total = sum(stat.size for stat in top_stats)

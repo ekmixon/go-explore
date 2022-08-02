@@ -82,10 +82,19 @@ class StochasticGatherer:
             self.ep_infos_to_report = ep_infos
         else:
             self.ep_infos_to_report = self.ep_info_window
-        self.nb_return_goals_reached = sum([ei['reached'] for ei in self.ep_infos_to_report])
+        self.nb_return_goals_reached = sum(
+            ei['reached'] for ei in self.ep_infos_to_report
+        )
+
         self.nb_return_goals_chosen = len(self.ep_infos_to_report)
-        self.nb_exploration_goals_reached = sum([ei['nb_exploration_goals_reached'] for ei in self.ep_infos_to_report])
-        self.nb_exploration_goals_chosen = sum([ei['nb_exploration_goals_chosen'] for ei in self.ep_infos_to_report])
+        self.nb_exploration_goals_reached = sum(
+            ei['nb_exploration_goals_reached'] for ei in self.ep_infos_to_report
+        )
+
+        self.nb_exploration_goals_chosen = sum(
+            ei['nb_exploration_goals_chosen'] for ei in self.ep_infos_to_report
+        )
+
         self.reward_mean = safemean([ei['r'] for ei in self.ep_infos_to_report])
         self.length_mean = safemean([ei['l'] for ei in self.ep_infos_to_report])
         self.nb_of_episodes += len(ep_infos)
@@ -124,17 +133,19 @@ class StochasticGatherer:
         self.runner.init_obs()
 
     def _train(self):
-        self.loss_values = []
-        for i in range(self.nb_of_epochs):
-            self.loss_values.append(self.model.train_from_runner(self.learning_rate, self.runner))
+        self.loss_values = [
+            self.model.train_from_runner(self.learning_rate, self.runner)
+            for _ in range(self.nb_of_epochs)
+        ]
 
     def save_model(self, filename):
         self.model.save(filename)
 
     def get_state(self):
-        state = {'ep_info_window': self.ep_info_window,
-                 'nb_of_episodes': self.nb_of_episodes}
-        return state
+        return {
+            'ep_info_window': self.ep_info_window,
+            'nb_of_episodes': self.nb_of_episodes,
+        }
 
     def set_state(self, state):
         self.ep_info_window = state['ep_info_window']
@@ -181,8 +192,7 @@ class DeterministicGatherer:
             actions = [self.explorer.get_action(env) for env in self.env.get_envs()]
             obs_and_goals, rewards, dones, infos = self.env.step(actions)
             for info in infos:
-                maybe_ep_info = info.get('episode')
-                if maybe_ep_info:
+                if maybe_ep_info := info.get('episode'):
                     ep_infos.append(maybe_ep_info)
 
         if hvd.size() > 1:
@@ -196,10 +206,22 @@ class DeterministicGatherer:
         else:
             self.ep_infos_to_report = self.ep_info_window
 
-        self.nb_return_goals_reached = sum([ei['nb_return_goals_reached'] for ei in self.ep_infos_to_report])
-        self.nb_return_goals_chosen = sum([ei['nb_return_goals_chosen'] for ei in self.ep_infos_to_report])
-        self.nb_exploration_goals_reached = sum([ei['nb_exploration_goals_reached'] for ei in self.ep_infos_to_report])
-        self.nb_exploration_goals_chosen = sum([ei['nb_exploration_goals_chosen'] for ei in self.ep_infos_to_report])
+        self.nb_return_goals_reached = sum(
+            ei['nb_return_goals_reached'] for ei in self.ep_infos_to_report
+        )
+
+        self.nb_return_goals_chosen = sum(
+            ei['nb_return_goals_chosen'] for ei in self.ep_infos_to_report
+        )
+
+        self.nb_exploration_goals_reached = sum(
+            ei['nb_exploration_goals_reached'] for ei in self.ep_infos_to_report
+        )
+
+        self.nb_exploration_goals_chosen = sum(
+            ei['nb_exploration_goals_chosen'] for ei in self.ep_infos_to_report
+        )
+
         self.return_goals_chosen = flatten_lists([ei['return_goals_chosen'] for ei in ep_infos])
         self.return_goals_info_chosen = flatten_lists([ei['return_goals_info_chosen'] for ei in ep_infos])
         self.exploration_goals_chosen = flatten_lists([ei['exploration_goals_chosen'] for ei in ep_infos])

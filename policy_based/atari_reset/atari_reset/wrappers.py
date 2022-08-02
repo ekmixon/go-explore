@@ -49,17 +49,15 @@ class VecWrapper(object):
         return self.venv.set_selector(selector)
 
     def init_archive(self):
-        archive = self.venv.init_archive()
-        return archive
+        return self.venv.init_archive()
 
     def recursive_getattr(self, name):
         if hasattr(self, name):
             return getattr(self, name)
-        else:
-            try:
-                return self.venv.recursive_getattr(name)
-            except AttributeError:
-                raise Exception(f'Couldn\'t get attr: {name}')
+        try:
+            return self.venv.recursive_getattr(name)
+        except AttributeError:
+            raise Exception(f'Couldn\'t get attr: {name}')
 
     def recursive_setattr(self, name, value):
         if hasattr(self, name):
@@ -73,11 +71,10 @@ class VecWrapper(object):
     def recursive_call_method(self, name, arguments=()):
         if hasattr(self, name):
             return getattr(self, name)(*arguments)
-        else:
-            try:
-                return self.venv.recursive_call_method(name, arguments)
-            except AttributeError:
-                raise Exception(f'Couldn\'t call method: {name}')
+        try:
+            return self.venv.recursive_call_method(name, arguments)
+        except AttributeError:
+            raise Exception(f'Couldn\'t call method: {name}')
 
     def recursive_call_method_ignore_return(self, name, arguments=()):
         if hasattr(self, name):
@@ -91,9 +88,8 @@ class VecWrapper(object):
     def batch_reset(self):
         global reset_for_batch
         reset_for_batch = True
-        obs = self.venv.reset()
         reset_for_batch = False
-        return obs
+        return self.venv.reset()
 
     def reset(self):
         return self.venv.reset()
@@ -139,8 +135,12 @@ class MyWrapper(gym.Wrapper):
         @param item:
         @return:
         """
-        raise AttributeError('Could not find ' + item + ' in ' + self.__class__.__name__ + '. ' +
-                             '__getattr__ is not (and should not be) implemented in MyWrapper')
+        raise AttributeError(
+            (
+                f'Could not find {item} in {self.__class__.__name__}. '
+                + '__getattr__ is not (and should not be) implemented in MyWrapper'
+            )
+        )
 
     def decrement_starting_point(self, nr_steps, idx):
         return self.env.decrement_starting_point(nr_steps, idx)
@@ -152,17 +152,15 @@ class MyWrapper(gym.Wrapper):
         return self.env.set_selector(selector)
 
     def init_archive(self):
-        archive = self.env.init_archive()
-        return archive
+        return self.env.init_archive()
 
     def recursive_getattr(self, name):
         if hasattr(self, name):
             return getattr(self, name)
-        else:
-            try:
-                return self.env.recursive_getattr(name)
-            except AttributeError:
-                raise Exception(f'Couldn\'t get attr: {name}')
+        try:
+            return self.env.recursive_getattr(name)
+        except AttributeError:
+            raise Exception(f'Couldn\'t get attr: {name}')
 
     def recursive_setattr(self, name, value):
         if hasattr(self, name):
@@ -176,11 +174,10 @@ class MyWrapper(gym.Wrapper):
     def recursive_call_method(self, name, arguments=()):
         if hasattr(self, name):
             return getattr(self, name)(*arguments)
-        else:
-            try:
-                return self.env.recursive_call_method(name, arguments)
-            except AttributeError:
-                raise Exception(f'Couldn\'t call method: {name}')
+        try:
+            return self.env.recursive_call_method(name, arguments)
+        except AttributeError:
+            raise Exception(f'Couldn\'t call method: {name}')
 
     def recursive_call_method_ignore_return(self, name, arguments=()):
         if hasattr(self, name):
@@ -194,9 +191,8 @@ class MyWrapper(gym.Wrapper):
     def batch_reset(self):
         global reset_for_batch
         reset_for_batch = True
-        obs = self.env.reset()
         reset_for_batch = False
-        return obs
+        return self.env.reset()
 
     def reset(self):
         return self.env.reset()
@@ -287,11 +283,10 @@ class VecFrameStack(VecWrapper):
     def recursive_getattr(self, name):
         if hasattr(self, name):
             return getattr(self, name)
-        else:
-            try:
-                return self.venv.recursive_getattr(name)
-            except AttributeError:
-                raise Exception(f'Couldn\'t get attr: {name}')
+        try:
+            return self.venv.recursive_getattr(name)
+        except AttributeError:
+            raise Exception(f'Couldn\'t get attr: {name}')
 
     def set_archive(self, archive):
         return self.venv.set_archive(archive)
@@ -309,7 +304,6 @@ class DemoReplayInfo:
             self.checkpoints = None
             self.checkpoint_action_nr = None
             self.starting_point = 0
-            self.starting_point_current_ep = None
         else:
             with open(demo_file_name, "rb") as f:
                 dat = pickle.load(f)
@@ -320,7 +314,8 @@ class DemoReplayInfo:
             self.checkpoints = dat['checkpoints']
             self.checkpoint_action_nr = dat['checkpoint_action_nr']
             self.starting_point = len(self.actions) - 1 - seed//workers_per_sp
-            self.starting_point_current_ep = None
+
+        self.starting_point_current_ep = None
 
 
 class ReplayResetEnv(MyWrapper):
@@ -356,8 +351,11 @@ class ReplayResetEnv(MyWrapper):
             self.demo_replay_info.append(DemoReplayInfo(None, seed, workers_per_sp))
         if os.path.isdir(demo_file_name):
             import glob
-            for f in sorted(glob.glob(demo_file_name + '/*.demo')):
-                self.demo_replay_info.append(DemoReplayInfo(f, seed, workers_per_sp))
+            self.demo_replay_info.extend(
+                DemoReplayInfo(f, seed, workers_per_sp)
+                for f in sorted(glob.glob(f'{demo_file_name}/*.demo'))
+            )
+
         else:
             self.demo_replay_info.append(DemoReplayInfo(demo_file_name, seed, workers_per_sp))
         self.cur_demo_replay = None
@@ -368,7 +366,7 @@ class ReplayResetEnv(MyWrapper):
         self.demo_selection = demo_selection
         self.avg_frames_window_size = avg_frames_window_size
         self.infinite_window_size = False
-        if not avg_frames_window_size > 0:
+        if avg_frames_window_size <= 0:
             self.avg_frames_window_size = 1
             self.infinite_window_size = True
         self.times_demos_chosen = np.zeros(len(self.demo_replay_info), dtype=np.int)
@@ -417,7 +415,6 @@ class ReplayResetEnv(MyWrapper):
 
         if self.test_from_start and self.cur_demo_idx == 0:
             pass
-        # kill if we have achieved the final score, or if we're lagging the demo too much
         elif self.score >= self.cur_demo_replay.returns[-1]:
             self.extra_frames_counter -= 1
             if self.extra_frames_counter <= 0:
@@ -425,8 +422,7 @@ class ReplayResetEnv(MyWrapper):
                 info['replay_reset.random_reset'] = True  # to distinguish from actual game over
         elif self.action_nr > self.allowed_lag:
             min_index = self.action_nr - self.allowed_lag
-            if min_index < 0:
-                min_index = 0
+            min_index = max(min_index, 0)
             if min_index >= len(self.cur_demo_replay.returns):
                 min_index = len(self.cur_demo_replay.returns) - 1
             max_index = self.action_nr + self.allowed_lag
@@ -561,7 +557,7 @@ class MaxAndSkipEnv(MyWrapper):
             self._obs_buffer.append(obs)
             total_reward += reward
             combined_info['skip_env.executed_actions'].append(info['sticky_env.executed_action'])
-            combined_info.update(info)
+            combined_info |= info
             if done:
                 break
         max_frame = np.max(np.stack(self._obs_buffer), axis=0)
@@ -727,10 +723,11 @@ class VideoWriter(MyWrapper):
             cv2.rectangle(overlay, (x_min, y_min), (x_min + self.x_res, y_min + self.y_res), color, 1)
 
     def match_attr(self, cell_1, cell_2, attr_name):
-        matches = True
-        if hasattr(cell_1, attr_name) and hasattr(cell_2, attr_name):
-            matches = getattr(cell_1, attr_name) == getattr(cell_2, attr_name)
-        return matches
+        return (
+            getattr(cell_1, attr_name) == getattr(cell_2, attr_name)
+            if hasattr(cell_1, attr_name) and hasattr(cell_2, attr_name)
+            else True
+        )
 
     def process_frame(self, frame):
         f_out = np.zeros((160, 160, 3), dtype=np.uint8)
@@ -748,9 +745,9 @@ class VideoWriter(MyWrapper):
         if self.plot_archive:
             for cell_key in self.local_archive:
                 if self.match_attr(cell_key, current_cell, 'level') and self.match_attr(cell_key, current_cell, 'room'):
-                    base_brightness = 50
                     if self.plot_return_prob:
                         reached = self.goal_conditioned_wrapper.archive.cells_reached_dict.get(cell_key, [])
+                        base_brightness = 50
                         if len(reached) > 0:
                             r = base_brightness + (255 - base_brightness) * (sum(reached)/len(reached))
                         else:
@@ -763,9 +760,12 @@ class VideoWriter(MyWrapper):
 
         if self.plot_goal:
             goal = self.goal_conditioned_wrapper.goal_cell_rep
-            if goal is not None:
-                if self.match_attr(goal, current_cell, 'level') and self.match_attr(goal, current_cell, 'room'):
-                    self._render_cell(f_out, goal, (255, 0, 0))
+            if (
+                goal is not None
+                and self.match_attr(goal, current_cell, 'level')
+                and self.match_attr(goal, current_cell, 'room')
+            ):
+                self._render_cell(f_out, goal, (255, 0, 0))
 
         if self.plot_cell_traj:
             goal = self.goal_conditioned_wrapper.goal_cell_rep
@@ -782,9 +782,12 @@ class VideoWriter(MyWrapper):
 
         if self.plot_sub_goal:
             goal = self.goal_conditioned_wrapper.sub_goal_cell_rep
-            if goal is not None:
-                if self.match_attr(goal, current_cell, 'level') and self.match_attr(goal, current_cell, 'room'):
-                    self._render_cell(f_out, goal, (255, 255, 0), overlay=f_overlay)
+            if (
+                goal is not None
+                and self.match_attr(goal, current_cell, 'level')
+                and self.match_attr(goal, current_cell, 'room')
+            ):
+                self._render_cell(f_out, goal, (255, 255, 0), overlay=f_overlay)
         for cell in self.goal_conditioned_wrapper.entropy_manager.entropy_cells:
             if self.match_attr(cell, current_cell, 'level') and self.match_attr(cell, current_cell, 'room'):
                 self._render_cell(f_out, cell, (255, 0, 255))
@@ -802,7 +805,7 @@ class VideoWriter(MyWrapper):
             f_out = cv2.putText(f_out, text, (20, 60), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
 
         if self.frames_as_images:
-            filename = self.current_file_name + f'_{self.cur_step:0>3}.png'
+            filename = f'{self.current_file_name}_{self.cur_step:0>3}.png'
             im = Image.fromarray(f_out)
             im.save(filename)
         return f_out
@@ -867,17 +870,14 @@ class VideoWriter(MyWrapper):
         info = self.goal_conditioned_wrapper.goal_cell_info
         print('Starting video for goal:', goal, info)
         rand_val = random.randint(0, 1000000)
-        if goal is not None:
-            if hasattr(goal, 'level'):
-                postfix = f'_{goal.level}_{goal.room}_{goal.objects}_{goal.y:0>2}_{goal.x:0>2}_{self.counter}.mp4'
-                name = self.file_prefix + postfix
-            elif hasattr(goal, 'treasures'):
-                name = self.file_prefix + f'_{goal.treasures}_{goal.room}_{goal.y:0>2}_{goal.x:0>2}_{self.counter}.mp4'
-            else:
-                name = self.file_prefix + f'_{rand_val}.mp4'
+        if goal is not None and hasattr(goal, 'level'):
+            postfix = f'_{goal.level}_{goal.room}_{goal.objects}_{goal.y:0>2}_{goal.x:0>2}_{self.counter}.mp4'
+            return self.file_prefix + postfix
+        elif goal is not None and hasattr(goal, 'treasures'):
+            return f'{self.file_prefix}_{goal.treasures}_{goal.room}_{goal.y:0>2}_{goal.x:0>2}_{self.counter}.mp4'
+
         else:
-            name = self.file_prefix + f'_{rand_val}.mp4'
-        return name
+            return f'{self.file_prefix}_{rand_val}.mp4'
 
 
 class NoopEnv(MyWrapper):
@@ -974,11 +974,7 @@ class ResetManager(MyWrapper):
                         new_sp_wins[sp] += 1
                 else:
                     new_sp_counts[sp] = 1
-                    if epinfo['as_good_as_demo']:
-                        new_sp_wins[sp] = 1
-                    else:
-                        new_sp_wins[sp] = 0
-
+                    new_sp_wins[sp] = 1 if epinfo['as_good_as_demo'] else 0
             for sp, wins in new_sp_wins.items():
                 self.demos[idx].starting_point_success[sp] = np.cast[np.float32](wins)/new_sp_counts[sp]
 

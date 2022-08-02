@@ -15,28 +15,27 @@ class ClonedEnv(gym.Wrapper):
         self.r = 0
 
     def step(self, action=None):
-        if self.state in self.possible_actions_dict:
-            possible_actions = list(self.possible_actions_dict[self.state])
-            action = possible_actions[self.rng.randint(len(possible_actions))]
-            obs, reward, done, info = self.env.step(action)
-            self.l += 1
-            self.r += reward
-            self.state = self.env.unwrapped._get_ram().tostring()
-            if self.state in self.possible_actions_dict: # still in known territory
-                info['possible_actions'] = self.possible_actions_dict[self.state]
-                if self.state in self.best_action_dict:
-                    info['best_action'] = self.best_action_dict[self.state]
-            else:
-                done = True
-                past_l = self.l
-                past_r = self.r
-                self.l = 0
-                self.r = 0
-                if past_l > 0:
-                    info['episode'] = {'r': past_r, 'l': past_l}
-        else:
+        if self.state not in self.possible_actions_dict:
             raise Exception('stepping cloned env without resetting')
 
+        possible_actions = list(self.possible_actions_dict[self.state])
+        action = possible_actions[self.rng.randint(len(possible_actions))]
+        obs, reward, done, info = self.env.step(action)
+        self.l += 1
+        self.r += reward
+        self.state = self.env.unwrapped._get_ram().tostring()
+        if self.state in self.possible_actions_dict: # still in known territory
+            info['possible_actions'] = self.possible_actions_dict[self.state]
+            if self.state in self.best_action_dict:
+                info['best_action'] = self.best_action_dict[self.state]
+        else:
+            done = True
+            past_l = self.l
+            past_r = self.r
+            self.l = 0
+            self.r = 0
+            if past_l > 0:
+                info['episode'] = {'r': past_r, 'l': past_l}
         return obs, reward, done, info
 
     def reset(self):
@@ -49,12 +48,12 @@ class ClonedEnv(gym.Wrapper):
         self.state = self.env.unwrapped._get_ram().tostring()
         if self.state in self.best_action_dict:
             info['best_action'] = self.best_action_dict[self.state]
-        for randop in range(self.rng.randint(30)): # randomize starting point
+        for _ in range(self.rng.randint(30)):
             obs, reward, done, info = self._step(None)
 
         if self.just_initialized:
             self.just_initialized = False
-            for randops in range(self.rng.randint(50000)):  # randomize starting point further
+            for _ in range(self.rng.randint(50000)):
                 obs, reward, done, info = self._step(None)
                 if done:
                     obs, info = self._reset()
@@ -91,7 +90,7 @@ def worker2(nr, remote, env_fn_wrapper, mode):
             rews = []
             dones = []
             infos = []
-            for step in range(count):
+            for _ in range(count):
                 ob, reward, done, info = env.step(0) # action is ignored in ClonedEnv downstream
                 if done:
                     ob = env.reset()
@@ -123,7 +122,7 @@ def worker2(nr, remote, env_fn_wrapper, mode):
         elif cmd == 'get_spaces':
             remote.send((env.action_space, env.observation_space))
         else:
-            raise NotImplementedError(str(cmd) + ' action not implemented in worker')
+            raise NotImplementedError(f'{str(cmd)} action not implemented in worker')
 
 class ClonedVecEnv(object):
     def __init__(self, env_fns, mode='best'):

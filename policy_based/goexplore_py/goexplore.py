@@ -25,7 +25,7 @@ BLACKLIST = type, ModuleType, FunctionType
 def getsize(obj):
     """sum size of object & members."""
     if isinstance(obj, BLACKLIST):
-        raise TypeError('getsize() does not take argument of type: ' + str(type(obj)))
+        raise TypeError(f'getsize() does not take argument of type: {str(type(obj))}')
     seen_ids = set()
     size = 0
     objects = [obj]
@@ -86,11 +86,7 @@ class Explore:
         new_cell_trajectory_info = self.archive.cell_trajectory_manager.get_info_to_sync()
         new_archive_info = self.archive.get_info_to_sync()
         to_send = (new_cell_trajectory_info, new_archive_info)
-        if hvd.size() > 1:
-            to_send = mpi.COMM_WORLD.allgather(to_send)
-        else:
-            to_send = [to_send]
-
+        to_send = mpi.COMM_WORLD.allgather(to_send) if hvd.size() > 1 else [to_send]
         self.trajectory_gatherer.env.recursive_call_method_ignore_return('update_archive', (to_send,))
 
         # Do not process our own information
@@ -100,11 +96,12 @@ class Explore:
     def get_state(self):
         archive_state = self.archive.get_state()
         gatherer_state = self.trajectory_gatherer.get_state()
-        state = {'archive_state': archive_state,
-                 'gatherer_state': gatherer_state,
-                 'frames_compute': self.frames_compute,
-                 'cycles': self.cycles}
-        return state
+        return {
+            'archive_state': archive_state,
+            'gatherer_state': gatherer_state,
+            'frames_compute': self.frames_compute,
+            'cycles': self.cycles,
+        }
 
     def set_state(self, state):
         self.archive.set_state(state['archive_state'])
@@ -132,12 +129,13 @@ class Explore:
         self.trajectory_gatherer.warm_up = False
 
     def get_traj_owners(self, trajectory_ids):
-        owned_by_me = []
-        for traj_id in trajectory_ids:
-            if self.archive.cell_trajectory_manager.has_full_trajectory(traj_id):
-                owned_by_me.append(traj_id)
-        owned_by_world = mpi.COMM_WORLD.allgather(owned_by_me)
-        return owned_by_world
+        owned_by_me = [
+            traj_id
+            for traj_id in trajectory_ids
+            if self.archive.cell_trajectory_manager.has_full_trajectory(traj_id)
+        ]
+
+        return mpi.COMM_WORLD.allgather(owned_by_me)
 
     def get_traj_owner(self, owned_by_world, traj_id):
         owner = None
@@ -169,28 +167,32 @@ class Explore:
         self.archive.cell_trajectory_manager.write_low_prob_traj_to_disk(traj_id)
 
     def sync_before_checkpoint(self):
-        if self.sil == 'sil' or self.sil == 'replay':
-            # Let everyone in the world know who has which full trajectory
-            owned_by_world = self.get_traj_owners(self.archive.cell_trajectory_manager.cell_trajectories)
+        if self.sil not in ['sil', 'replay']:
+            return
+        # Let everyone in the world know who has which full trajectory
+        owned_by_world = self.get_traj_owners(self.archive.cell_trajectory_manager.cell_trajectories)
 
-            requests = []
-            if hvd.rank() == 0:
+        requests = []
+        if hvd.rank() == 0:
                 # Rank 0: figure out which trajectories you are missing
-                owned_by_others = []
-                for traj_id in self.archive.cell_trajectory_manager.cell_trajectories:
-                    if not self.archive.cell_trajectory_manager.has_full_trajectory(traj_id):
-                        owned_by_others.append(traj_id)
+            owned_by_others = [
+                traj_id
+                for traj_id in self.archive.cell_trajectory_manager.cell_trajectories
+                if not self.archive.cell_trajectory_manager.has_full_trajectory(
+                    traj_id
+                )
+            ]
 
-                # Rank 0: figure out who owns those trajectories
-                owners = [self.get_traj_owner(owned_by_world, other_traj_id) for other_traj_id in owned_by_others]
+            # Rank 0: figure out who owns those trajectories
+            owners = [self.get_traj_owner(owned_by_world, other_traj_id) for other_traj_id in owned_by_others]
 
-                # Rank 0: construct a set of requests
-                requests = [(hvd.rank(), traj_id, owner) for traj_id, owner in zip(owned_by_others, owners)]
+            # Rank 0: construct a set of requests
+            requests = [(hvd.rank(), traj_id, owner) for traj_id, owner in zip(owned_by_others, owners)]
 
-            # Exchange requests
-            requests = mpi.COMM_WORLD.allgather(requests)
-            requests = flatten_lists(requests)
-            self.process_requests(requests)
+        # Exchange requests
+        requests = mpi.COMM_WORLD.allgather(requests)
+        requests = flatten_lists(requests)
+        self.process_requests(requests)
 
     def run_cycle(self):
         # Warm up cycles are not counted as cycles
@@ -208,7 +210,7 @@ class Explore:
         self.frames_compute += sum(global_frames)
 
         self.archive.frame_skip = self.trajectory_gatherer.frame_skip
-        self.archive.frames = prev_frames + sum(global_frames[0:hvd.rank()])
+        self.archive.frames = prev_frames + sum(global_frames[:hvd.rank()])
         self.archive.update(mb_data,
                             self.trajectory_gatherer.return_goals_chosen,
                             self.trajectory_gatherer.return_goals_reached,
@@ -220,9 +222,7 @@ class Explore:
         trajectory_manager = self.archive.cell_trajectory_manager
         trajectory_manager.traj_prob_dict = cell_selector.get_traj_probabilities_dict(self.archive.archive)
 
-        if self.sil == 'sil' or self.sil == 'replay':
-            traj_candidates = []
-
+        if self.sil in ['sil', 'replay']:
             # Select a trajectory to imitate based on the current cell-selection procedure
             key = self.archive.cell_selector.choose_cell_key(self.archive.archive)[0]
 
@@ -230,8 +230,7 @@ class Explore:
             cell_traj_end = self.archive.archive[key].cell_traj_end
             score = self.archive.archive[key].score
             trajectory_len = self.archive.archive[key].trajectory_len
-            traj_candidates.append((cell_traj_id, cell_traj_end, score, trajectory_len))
-
+            traj_candidates = [(cell_traj_id, cell_traj_end, score, trajectory_len)]
             # Let the world know which trajectory we have chosen for self-imitation learning
             selected_trajectories = mpi.COMM_WORLD.allgather(cell_traj_id)
 
@@ -255,14 +254,14 @@ class Explore:
             self.process_requests(requests)
 
             # If we still do not have a trajectory to imitate, stop imitation learning
-            if len(traj_candidates) == 0:
+            if not traj_candidates:
                 env_zero.recursive_call_method('set_sil_trajectory', [None, None])
                 self.prev_selected_traj = None
                 self.prev_selected_traj_len = 0
             else:
                 selected_traj, cell_traj_end, selected_traj_score, selected_traj_len = traj_candidates[-1]
                 if env_zero.recursive_getattr('sil_ready_for_next') and \
-                        (self.prev_selected_traj != selected_traj or self.prev_selected_traj_len < selected_traj_len):
+                            (self.prev_selected_traj != selected_traj or self.prev_selected_traj_len < selected_traj_len):
                     cell_trajectory = trajectory_manager.get_trajectory(selected_traj, -1,
                                                                         self.archive.cell_id_to_key_dict)
                     frame_trajectory = trajectory_manager.get_full_trajectory(cell_traj_id, cell_traj_end)

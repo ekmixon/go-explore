@@ -189,11 +189,12 @@ class CellTrajectoryManager:
         writer.close()
 
     def get_state(self):
-        state = {'cell_trajectories': self.cell_trajectories,
-                 'del_policy_new_cells': self.del_policy_new_cells,
-                 'del_rand_new_cells': self.del_rand_new_cells,
-                 'del_ret_new_cells': self.del_ret_new_cells}
-        return state
+        return {
+            'cell_trajectories': self.cell_trajectories,
+            'del_policy_new_cells': self.del_policy_new_cells,
+            'del_rand_new_cells': self.del_rand_new_cells,
+            'del_ret_new_cells': self.del_ret_new_cells,
+        }
 
     def set_state(self, state):
         self.cell_trajectories = state['cell_trajectories']
@@ -214,17 +215,25 @@ class CellTrajectoryManager:
         return self.updated_trajectory_fragments
 
     def sync_traj_start(self, trajectory_fragments: Dict[int, CellTrajectory]):
-        for traj_key in trajectory_fragments:
-            trajectory_fragment = trajectory_fragments[traj_key]
+        for traj_key, trajectory_fragment in trajectory_fragments.items():
             if traj_key not in self.cell_trajectories:
-                assert trajectory_fragment.fragment_start == 0, 'error in trajectory: ' + str(trajectory_fragment)
-                assert trajectory_fragment.reference_count == 0, 'error in trajectory: ' + str(trajectory_fragment)
+                assert (
+                    trajectory_fragment.fragment_start == 0
+                ), f'error in trajectory: {str(trajectory_fragment)}'
+
+                assert (
+                    trajectory_fragment.reference_count == 0
+                ), f'error in trajectory: {str(trajectory_fragment)}'
+
                 self.cell_trajectories[traj_key] = trajectory_fragment
                 self.increment_reference(traj_key)
                 if trajectory_fragment.finished:
                     self.synced_trajectories.append(traj_key)
             else:
-                assert trajectory_fragments[traj_key].fragment_start == len(self.cell_trajectories[traj_key].cell_ids)
+                assert trajectory_fragment.fragment_start == len(
+                    self.cell_trajectories[traj_key].cell_ids
+                )
+
                 trajectory = self.cell_trajectories[traj_key]
                 trajectory.score = trajectory_fragment.score
                 trajectory.exp_strat = trajectory_fragment.exp_strat
@@ -260,7 +269,10 @@ class CellTrajectoryManager:
         self.cell_trajectory_id = trajectory_id
 
     def _start_trajectory(self, trajectory_id):
-        assert trajectory_id not in self.updated_trajectory_fragments, 'Traj. id ' + str(trajectory_id) + ' reused!'
+        assert (
+            trajectory_id not in self.updated_trajectory_fragments
+        ), f'Traj. id {str(trajectory_id)} reused!'
+
         trajectory = CellTrajectory()
         trajectory.id = trajectory_id
         trajectory.tie_breaker = random.random()
@@ -271,7 +283,10 @@ class CellTrajectoryManager:
     def update_trajectory(self, cell_id: int, reward, obs, goal, action, ge_reward, cell_key, exp_strat, new_cell):
         # Get the current trajectory
         trajectory = self.cell_trajectories[self.cell_trajectory_id]
-        assert not trajectory.finished, 'Finished trajectories should not be updated! Trajectory' + str(trajectory)
+        assert (
+            not trajectory.finished
+        ), f'Finished trajectories should not be updated! Trajectory{str(trajectory)}'
+
 
         # Get the current trajectory fragment
         if self.cell_trajectory_id not in self.updated_trajectory_fragments:
@@ -316,7 +331,7 @@ class CellTrajectoryManager:
         trajectory_fragment.exp_new_cells = trajectory.exp_new_cells
         trajectory_fragment.ret_new_cells = trajectory.ret_new_cells
 
-        if self.sil == 'sil' or self.sil == 'replay' or self.sil == 'nosil':
+        if self.sil in ['sil', 'replay', 'nosil']:
             if self.cell_trajectory_id not in self.full_trajectories:
                 self.set_full_trajectory(self.cell_trajectory_id)
             self.full_trajectories[self.cell_trajectory_id].append((cell_key, reward, (obs, goal), action, ge_reward))
@@ -334,7 +349,10 @@ class CellTrajectoryManager:
         trajectory = self.cell_trajectories[trajectory_id]
         smallest_reached = sys.maxsize
         nb_zero_reached = 0
-        cell_keys = set([archive.cell_id_to_key_dict[cell_id] for cell_id in trajectory.cell_ids])
+        cell_keys = {
+            archive.cell_id_to_key_dict[cell_id] for cell_id in trajectory.cell_ids
+        }
+
         for cell_key in cell_keys:
             cell_info = archive.archive[cell_key]
             if cell_info.nb_reached < smallest_reached:
@@ -395,9 +413,18 @@ class CellTrajectoryManager:
         result = []
         if cell_trajectory_id == self.empty_trajectory_id:
             return result
-        for cell_id, nb_actions in zip(self.cell_trajectories[cell_trajectory_id].cell_ids[0:trajectory_end],
-                                       self.cell_trajectories[cell_trajectory_id].actions_per_cell[0:trajectory_end]):
-            result.append((cell_key_dict[cell_id], nb_actions))
+        result.extend(
+            (cell_key_dict[cell_id], nb_actions)
+            for cell_id, nb_actions in zip(
+                self.cell_trajectories[cell_trajectory_id].cell_ids[
+                    :trajectory_end
+                ],
+                self.cell_trajectories[cell_trajectory_id].actions_per_cell[
+                    :trajectory_end
+                ],
+            )
+        )
+
         return result
 
     def has_full_trajectory(self, traj_id):
@@ -420,19 +447,23 @@ class CellTrajectoryManager:
         if cell_trajectory_id == self.empty_trajectory_id:
             return result
         if cell_trajectory_id not in self.full_trajectory_info:
-            raise KeyError(str(cell_trajectory_id) + ' not in trajectory manager')
+            raise KeyError(f'{str(cell_trajectory_id)} not in trajectory manager')
         if self.full_trajectory_info[cell_trajectory_id].on_disk:
             self.read_full_trajectory_from_disk(cell_trajectory_id)
         if trajectory_end == -1:
             return self.full_trajectories[cell_trajectory_id]
-        nb_of_frames = sum(self.cell_trajectories[cell_trajectory_id].actions_per_cell[0:trajectory_end])
-        result = self.full_trajectories[cell_trajectory_id][0:nb_of_frames]
+        nb_of_frames = sum(
+            self.cell_trajectories[cell_trajectory_id].actions_per_cell[
+                :trajectory_end
+            ]
+        )
+
+        result = self.full_trajectories[cell_trajectory_id][:nb_of_frames]
         return result
 
     def get_full_trajectory_file_name(self, cell_trajectory_id):
-        file_name = str(cell_trajectory_id) + '_traj.pkl'
-        path_to_file = os.path.join(self.temp_dir, file_name)
-        return path_to_file
+        file_name = f'{str(cell_trajectory_id)}_traj.pkl'
+        return os.path.join(self.temp_dir, file_name)
 
     def write_low_prob_traj_to_disk(self, traj_id):
         if traj_id == CellTrajectoryManager.empty_trajectory_id:
@@ -440,11 +471,15 @@ class CellTrajectoryManager:
         has_traj = self.has_full_trajectory(traj_id)
         traj_finished = self.cell_trajectories[traj_id].finished
         not_on_disk = not self.has_full_trajectory_on_disk(traj_id)
-        if has_traj and traj_finished and not_on_disk:
-            if traj_id in self.traj_prob_dict:
-                low_prob = self.traj_prob_dict[traj_id] < self.low_prob_traj_tresh
-                if low_prob:
-                    self.write_full_trajectory_to_disk(traj_id)
+        if (
+            has_traj
+            and traj_finished
+            and not_on_disk
+            and traj_id in self.traj_prob_dict
+        ):
+            low_prob = self.traj_prob_dict[traj_id] < self.low_prob_traj_tresh
+            if low_prob:
+                self.write_full_trajectory_to_disk(traj_id)
 
     def write_full_trajectory_to_disk(self, cell_trajectory_id):
         full_trajectory = self.full_trajectories[cell_trajectory_id]
@@ -459,9 +494,7 @@ class CellTrajectoryManager:
         with open(self.get_full_trajectory_file_name(cell_trajectory_id), 'rb') as fh:
             unpickle = pickle.Unpickler(fh)
             nb_items = unpickle.load()
-            data = []
-            for i in range(nb_items):
-                data.append(unpickle.load())
+            data = [unpickle.load() for _ in range(nb_items)]
         self.set_full_trajectory(cell_trajectory_id, data)
         self.full_trajectory_info[cell_trajectory_id].on_disk = False
 

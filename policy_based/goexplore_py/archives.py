@@ -25,10 +25,10 @@ class StochasticArchive:
 
         # Core data
         # This information is required to reset the state of the archive
-        self.archive: Dict[Any, data_classes.CellInfoStochastic] = dict()
+        self.archive: Dict[Any, data_classes.CellInfoStochastic] = {}
         self.cell_trajectory_manager: CellTrajectoryManager = cell_trajectory_manager
         self.cell_id_to_key_dict: Dict[int, Any] = {-1: None}
-        self.cells_reached_dict: Dict[Any, deque] = dict()
+        self.cells_reached_dict: Dict[Any, deque] = {}
 
         # Convenience data
         # This information is necessary to make the archive run properly, but it can be calculated from the core data
@@ -43,23 +43,23 @@ class StochasticArchive:
         # This information is reset every iteration, so it does not need to be restored
         self.updated_cells: Set[Any] = set()
         self.updated_info = defaultdict(data_classes.CellInfoStochastic)
-        self.new_cells: Dict[Any, int] = dict()
+        self.new_cells: Dict[Any, int] = {}
 
     def get_state(self):
         for key in self.archive:
-            assert key in self.cell_key_to_id_dict, 'key:' + str(key) + ' has no recorded id!'
+            assert key in self.cell_key_to_id_dict, f'key:{str(key)} has no recorded id!'
 
         cell_set = set(self.cell_id_to_key_dict.values())
 
         for key in self.archive:
-            assert key in cell_set, 'key:' + str(key) + ' has no inverse id!'
+            assert key in cell_set, f'key:{str(key)} has no inverse id!'
 
-        state = {'archive': self.archive,
-                 'trajectory_manager_state': self.cell_trajectory_manager.get_state(),
-                 'cell_id_to_key_dict': self.cell_id_to_key_dict,
-                 'cells_reached_dict': self.cells_reached_dict,
-                 }
-        return state
+        return {
+            'archive': self.archive,
+            'trajectory_manager_state': self.cell_trajectory_manager.get_state(),
+            'cell_id_to_key_dict': self.cell_id_to_key_dict,
+            'cells_reached_dict': self.cells_reached_dict,
+        }
 
     def set_state(self, state):
         # Directly set attributes
@@ -77,9 +77,10 @@ class StochasticArchive:
                 local_cell_id = cell_id - hvd.rank() * (sys.maxsize // hvd.size())
                 if local_cell_id > self.local_cell_counter:
                     self.local_cell_counter = local_cell_id
-            if cell_id not in self.cell_key_to_id_dict:
-                self.cell_key_to_id_dict[cell_key] = cell_id
-            elif my_min_id <= cell_id < my_max_id:
+            if (
+                cell_id not in self.cell_key_to_id_dict
+                or my_min_id <= cell_id < my_max_id
+            ):
                 self.cell_key_to_id_dict[cell_key] = cell_id
             if cell_key is not None:
                 self.cell_selector.cell_update(cell_key)
@@ -93,10 +94,10 @@ class StochasticArchive:
 
         for key in self.cell_key_to_id_dict:
             if key is not None:
-                assert key in self.archive, 'key:' + str(key) + ' not in archive!'
+                assert key in self.archive, f'key:{str(key)} not in archive!'
 
         for key in self.archive:
-            assert key in self.cell_key_to_id_dict, 'key:' + str(key) + ' has no recorded id!'
+            assert key in self.cell_key_to_id_dict, f'key:{str(key)} has no recorded id!'
 
     def get_name(self):
         raise NotImplementedError('get_name needs to be implemented in archive!')
@@ -108,8 +109,7 @@ class StochasticArchive:
         raise NotImplementedError('get_cell_from_env needs to be implemented in archive!')
 
     def get_cells(self, env):
-        cells = {self.get_name(): self.get_cell_from_env(env)}
-        return cells
+        return {self.get_name(): self.get_cell_from_env(env)}
 
     def get_archive(self, name):
         assert name == self.get_name()
@@ -153,8 +153,12 @@ class StochasticArchive:
         for cell in self.updated_cells:
             updated_cell_id_to_key_dict[self.cell_key_to_id_dict[cell]] = cell
             updated_cell_info[cell] = self.archive[cell]
-        info_to_sync = (updated_cell_id_to_key_dict, updated_cell_info, self.updated_info, self.new_cells)
-        return info_to_sync
+        return (
+            updated_cell_id_to_key_dict,
+            updated_cell_info,
+            self.updated_info,
+            self.new_cells,
+        )
 
     def sync_cells(self, info_to_sync: Tuple[Dict[int, Any], Dict[Any, data_classes.CellInfoStochastic], Any, Any]):
         updated_cell_id_to_key_dict, updated_cell_info, updated_info, new_cells = info_to_sync
@@ -165,27 +169,26 @@ class StochasticArchive:
                 self.cell_id_to_key_dict[cell_id] = cell_key
 
         for cell_key, cell_info in updated_cell_info.items():
-            if cell_key in new_cells:
-                if cell_key in self.archive:
-                    current_frame = self.archive[cell_key].frame
-                    if cell_info.frame < current_frame:
-                        old_traj_id = self.archive[cell_key].first_cell_traj_id
-                        old_exp_strat = self.archive[cell_key].ret_discovered
-                        self.archive[cell_key].frame = cell_info.frame
-                        self.archive[cell_key].first_cell_traj_id = cell_info.first_cell_traj_id
-                        self.archive[cell_key].ret_discovered = cell_info.ret_discovered
-                        if old_exp_strat == global_const.EXP_STRAT_NONE:
-                            self.cell_trajectory_manager.cell_trajectories[old_traj_id].ret_new_cells -= 1
-                        else:
-                            self.cell_trajectory_manager.cell_trajectories[old_traj_id].exp_new_cells -= 1
-                    elif current_frame < cell_info.frame:
-                        traj_id = cell_info.first_cell_traj_id
-                        if new_cells[cell_key] == global_const.EXP_STRAT_NONE:
-                            self.cell_trajectory_manager.cell_trajectories[traj_id].ret_new_cells -= 1
-                        else:
-                            self.cell_trajectory_manager.cell_trajectories[traj_id].exp_new_cells -= 1
+            if cell_key in new_cells and cell_key in self.archive:
+                current_frame = self.archive[cell_key].frame
+                if cell_info.frame < current_frame:
+                    old_traj_id = self.archive[cell_key].first_cell_traj_id
+                    old_exp_strat = self.archive[cell_key].ret_discovered
+                    self.archive[cell_key].frame = cell_info.frame
+                    self.archive[cell_key].first_cell_traj_id = cell_info.first_cell_traj_id
+                    self.archive[cell_key].ret_discovered = cell_info.ret_discovered
+                    if old_exp_strat == global_const.EXP_STRAT_NONE:
+                        self.cell_trajectory_manager.cell_trajectories[old_traj_id].ret_new_cells -= 1
                     else:
-                        raise RuntimeError('Frames should never be equal!')
+                        self.cell_trajectory_manager.cell_trajectories[old_traj_id].exp_new_cells -= 1
+                elif current_frame < cell_info.frame:
+                    traj_id = cell_info.first_cell_traj_id
+                    if new_cells[cell_key] == global_const.EXP_STRAT_NONE:
+                        self.cell_trajectory_manager.cell_trajectories[traj_id].ret_new_cells -= 1
+                    else:
+                        self.cell_trajectory_manager.cell_trajectories[traj_id].exp_new_cells -= 1
+                else:
+                    raise RuntimeError('Frames should never be equal!')
 
             if self.should_accept_cell(cell_key, cell_info.score, cell_info.trajectory_len, cell_info.cell_traj_id):
                 self.update_cell(cell_key, cell_info)
@@ -231,7 +234,7 @@ class StochasticArchive:
     def clear_info_to_sync(self):
         self.updated_cells = set()
         self.updated_info = defaultdict(data_classes.CellInfoStochastic)
-        self.new_cells = dict()
+        self.new_cells = {}
         self.cell_trajectory_manager.clear_info_to_sync()
 
     def update_archive(self, mb_data):
@@ -329,12 +332,11 @@ class StochasticArchive:
             if reached:
                 cell_info.nb_reached += 1
                 u_cell_info.nb_reached += 1
-            else:
+            elif not inc_ent:
                 sub_goal_info = self.archive[sub_goal_key]
+                sub_goal_info.nb_sub_goal_failed += 1
                 u_sub_goal_info = self.updated_info[sub_goal_key]
-                if not inc_ent:
-                    sub_goal_info.nb_sub_goal_failed += 1
-                    u_sub_goal_info.nb_sub_goal_failed += 1
+                u_sub_goal_info.nb_sub_goal_failed += 1
 
             if goal_key not in self.cells_reached_dict:
                 self.cells_reached_dict[goal_key] = deque(maxlen=100)
@@ -371,20 +373,18 @@ class StochasticArchive:
                 return True
             else:
                 return False
+        elif full_traj_len < potential_cell.trajectory_len:
+            return True
+        elif full_traj_len > potential_cell.trajectory_len:
+            return False
+        elif c_tie_breaker < p_tie_breaker:
+            return True
+        elif c_tie_breaker > p_tie_breaker:
+            return False
+        elif current_traj_id < potential_cell.cell_traj_id:
+            return True
         else:
-            if full_traj_len < potential_cell.trajectory_len:
-                return True
-            elif full_traj_len > potential_cell.trajectory_len:
-                return False
-            # Ensure that all workers and processes accept the same trajectory when all other cases are equal
-            elif c_tie_breaker < p_tie_breaker:
-                return True
-            elif c_tie_breaker > p_tie_breaker:
-                return False
-            elif current_traj_id < potential_cell.cell_traj_id:
-                return True
-            else:
-                return False
+            return False
 
     def get_new_cell_info(self):
         return data_classes.CellInfoStochastic()
@@ -448,17 +448,20 @@ class ArchiveCollection:
             self.active_archive = archive
         if name is None:
             name = archive.get_name()
-        assert name not in self.archive_dict, 'Archive with name ' + name + ' already in collection'
+        assert (
+            name not in self.archive_dict
+        ), f'Archive with name {name} already in collection'
+
         self.archive_dict[name] = archive
 
     def get_archive(self, name):
         return self.archive_dict[name]
 
     def get_cells(self, env):
-        cells = {}
-        for archive in self.archive_dict.values():
-            cells[archive.get_name()] = archive.get_cell_from_env(env)
-        return cells
+        return {
+            archive.get_name(): archive.get_cell_from_env(env)
+            for archive in self.archive_dict.values()
+        }
 
     def clear_cache(self):
         for archive in self.archive_dict.values():

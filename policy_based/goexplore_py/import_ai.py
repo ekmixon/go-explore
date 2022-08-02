@@ -37,7 +37,7 @@ try:
     import cv2
 except ModuleNotFoundError:
     _warnings.warn('cv2 not found')
-    
+
 try:
     import gym
 except ModuleNotFoundError:

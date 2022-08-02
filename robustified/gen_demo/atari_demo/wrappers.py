@@ -43,10 +43,18 @@ class AtariDemo(gym.Wrapper):
                 self.info.append(info)
 
             # periodic checkpoint saving
-            if not done:
-                if (len(self.checkpoint_action_nr)>0 and len(self.actions) >= self.checkpoint_action_nr[-1] + self.save_every_k) \
-                        or (len(self.checkpoint_action_nr)==0 and len(self.actions) >= self.save_every_k):
-                    self.save_checkpoint()
+            if not done and (
+                (
+                    len(self.checkpoint_action_nr) > 0
+                    and len(self.actions)
+                    >= self.checkpoint_action_nr[-1] + self.save_every_k
+                )
+                or (
+                    len(self.checkpoint_action_nr) == 0
+                    and len(self.actions) >= self.save_every_k
+                )
+            ):
+                self.save_checkpoint()
 
         return obs, reward, done, info
 

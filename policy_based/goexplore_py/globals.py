@@ -39,7 +39,7 @@ def get_trajectory(prev_idxs: List[int], actions: List[int], idx: int):
     if idx is not None:
         while prev_idxs[idx] is not None:
             action = actions[idx]
-            idx = idx - prev_idxs[idx]
+            idx -= prev_idxs[idx]
             trajectory.append(action)
     trajectory.reverse()
     return trajectory
